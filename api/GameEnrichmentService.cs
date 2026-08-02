@@ -114,7 +114,13 @@ public sealed class GameEnrichmentService
             return;
         }
 
-        var igdbId = selected.Value.Id;
+    if (!selected.Value.TryGetProperty("id", out var idProperty))
+    {
+        throw new InvalidOperationException(
+            "El resultado seleccionado de IGDB no contiene id.");
+    }
+
+    var igdbId = idProperty.GetInt32();
 
         using var detailDocument = await _igdb.GetGameAsync(igdbId);
 
