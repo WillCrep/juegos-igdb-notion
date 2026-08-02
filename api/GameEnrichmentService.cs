@@ -21,9 +21,17 @@ public sealed class GameEnrichmentService
     public async Task ProcessPageAsync(string pageId)
     {
         using var page = await _notion.GetPageAsync(pageId);
+        _logger.LogInformation(
+    "Respuesta completa de Notion para la página {PageId}: {Json}",
+    pageId,
+    page.RootElement.GetRawText());
 
         var properties = page.RootElement.GetProperty("properties");
-
+_logger.LogInformation(
+    "Propiedades recibidas: {Properties}",
+    string.Join(
+        ", ",
+        properties.EnumerateObject().Select(p => p.Name)));
         var gameName = GetTitle(properties);
         var ownedPlatforms = GetMultiSelect(properties, "plataforma");
 
