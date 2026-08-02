@@ -1,3 +1,4 @@
+using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 
@@ -8,6 +9,10 @@ var host = new HostBuilder()
     services.AddHttpClient<IgdbClient>();
     services.AddHttpClient<NotionClient>();
     services.AddSingleton<GameEnrichmentService>();
+
+    // Agregar Application Insights
+        services.AddApplicationInsightsTelemetryWorkerService();
+        services.ConfigureFunctionsApplicationInsights();
 })
 .Build();
 
