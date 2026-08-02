@@ -55,3 +55,8 @@ CodeCoverage/
 *.VisualState.xml
 TestResult.xml
 nunit-*.xml
+
+api/local.settings.json
+api/bin/
+api/obj/
+.vscode/
