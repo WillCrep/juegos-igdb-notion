@@ -22,7 +22,9 @@ public sealed class GameEnrichmentService
         _logger = logger;
     }
 
-    public async Task ProcessPageAsync(string pageId)
+    public async Task ProcessPageAsync(
+        string pageId,
+        bool isEditedEvent = false)
     {
         using var page = await _notion.GetPageAsync(pageId);
 
@@ -37,11 +39,36 @@ _logger.LogWarning(
 
         var gameName = GetTitle(properties);
 
+        var currentState = GetSelectName(properties, "Estado");
+        var manualIgdbId = GetNumber(properties, "IGDB ID");
+        var isManualRetry =
+            string.Equals(
+                currentState,
+                "Revisi\u00f3n manual",
+                StringComparison.OrdinalIgnoreCase) &&
+            manualIgdbId.HasValue;
+
+        _logger.LogInformation(
+            "P\u00e1gina {PageId}: estado={State}, IGDB ID={IgdbId}, evento editado={IsEdited}",
+            pageId,
+            currentState ?? "(vac\u00edo)",
+            manualIgdbId?.ToString() ?? "(vac\u00edo)",
+            isEditedEvent);
+
+        // Las ediciones normales provocadas por el propio servicio se ignoran.
+        // Solo una ediciÃ³n manual con estado RevisiÃ³n manual e IGDB ID
+        // debe volver a procesarse.
+        if (isEditedEvent && !isManualRetry)
+        {
+            _logger.LogInformation(
+                "EdiciÃ³n ignorada para {PageId}: no es una selecciÃ³n manual pendiente.",
+                pageId);
+            return;
+        }
+
 _logger.LogWarning(
     "Título extraído: '{GameName}'",
     gameName);
-
-        var ownedPlatforms = GetMultiSelect(properties, "plataforma");
 
         if (string.IsNullOrWhiteSpace(gameName))
         {
@@ -63,7 +90,10 @@ _logger.LogWarning(
                 }
             });
         
-        using var search = await _igdb.SearchGamesAsync(gameName);
+        using var search = isManualRetry
+            ? JsonDocument.Parse(
+                $"[{{\"id\":{manualIgdbId!.Value},\"name\":{JsonSerializer.Serialize(gameName)}}}]")
+            : await _igdb.SearchGamesAsync(gameName);
 
         var candidates = search.RootElement
         .EnumerateArray()
@@ -95,10 +125,7 @@ _logger.LogWarning(
             return;
         }
         
-        var selected = SelectCandidate(
-            candidates,
-            gameName,
-            ownedPlatforms);
+        var selected = SelectCandidate(candidates, gameName);
 
         if(selected is null)
         {
@@ -185,7 +212,7 @@ var igdbId = idProperty.GetInt32();
 
         if (!string.IsNullOrWhiteSpace(summary))
         {
-            pageProperties["resumen"] = RichText(
+            pageProperties["Resumen"] = RichText(
                 Truncate(summary, 1800));
         }
 
@@ -269,12 +296,160 @@ var igdbId = idProperty.GetInt32();
         blocks.Add(Paragraph(
             "Datos proporcionados por IGDB: https://www.igdb.com/"));
 
+        // El contenido de la página es una ficha visual. Los datos
+        // estructurados permanecen en las propiedades y los DLC en su base.
+        blocks = BuildGameContentBlocks(game, summary, coverUrl);
+
         await _notion.AppendBlocksAsync(pageId, blocks);
 
         _logger.LogInformation(
             "Página {PageId} procesada con IGDB {IgdbId}",
             pageId,
             igdbId);
+    }
+
+    private static List<object> BuildGameContentBlocks(
+        JsonElement game,
+        string? summary,
+        string coverUrl)
+    {
+        var blocks = new List<object>
+        {
+            Heading("Ficha del juego"),
+            Paragraph(GetString(game, "name") ?? "")
+        };
+
+        if (!string.IsNullOrWhiteSpace(coverUrl))
+        {
+            blocks.Add(CenteredImage(coverUrl));
+        }
+
+        if (!string.IsNullOrWhiteSpace(summary))
+        {
+            blocks.Add(Heading("Resumen"));
+            blocks.Add(Paragraph(Truncate(summary, 1800)));
+        }
+
+        var images = GetImageUrls(game, "screenshots", "t_1080p")
+            .Concat(GetImageUrls(game, "artworks", "t_1080p"))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(2)
+            .ToList();
+
+        if (images.Count > 0)
+        {
+            blocks.Add(Heading("ImÃ¡genes"));
+            foreach (var image in images)
+            {
+                blocks.Add(Image(image, "Imagen del juego"));
+            }
+        }
+
+        var videos = GetNestedItems(game, "videos")
+            .Select(video => new
+            {
+                Url = GetString(video, "video_id") is { } id
+                    ? $"https://www.youtube.com/watch?v={id}"
+                    : null,
+                Name = GetString(video, "name")
+            })
+            .Where(video => !string.IsNullOrWhiteSpace(video.Url))
+            .Take(2)
+            .ToList();
+
+        if (videos.Count > 0)
+        {
+            blocks.Add(Heading("Videos"));
+            foreach (var video in videos)
+            {
+                blocks.Add(Video(video.Url!, video.Name ?? "Video de IGDB"));
+            }
+        }
+
+        var releaseRows = GetNestedItems(game, "release_dates")
+            .Select(item => new[]
+            {
+                GetNestedString(item, "platform", "name") ?? "Sin plataforma",
+                GetString(item, "human") ?? GetDate(item, "date") ?? "Sin fecha",
+                GetNestedString(item, "release_region", "region") ?? ""
+            })
+            .Where(row => row.Any(value => !string.IsNullOrWhiteSpace(value)))
+            .DistinctBy(row => string.Join("|", row), StringComparer.OrdinalIgnoreCase)
+            .OrderBy(row => row[0])
+            .Take(100)
+            .ToList();
+
+        if (releaseRows.Count > 0)
+        {
+            blocks.Add(Heading("Fechas de lanzamiento por plataforma"));
+            blocks.Add(Table(
+                new[] { "Plataforma", "Fecha", "RegiÃ³n" },
+                releaseRows));
+        }
+
+        var ageRows = GetNestedItems(game, "age_ratings")
+            .Select(item => new[]
+            {
+                GetNestedString(item, "organization", "name") ?? "Sin organizaciÃ³n",
+                GetNestedString(item, "rating_category", "rating") ?? "Sin clasificaciÃ³n",
+                GetString(item, "synopsis") ?? ""
+            })
+            .DistinctBy(row => string.Join("|", row), StringComparer.OrdinalIgnoreCase)
+            .Take(30)
+            .ToList();
+
+        /*
+        if (false)
+        {
+            blocks.Add(Heading("ClasificaciÃ³n por edades"));
+            blocks.Add(Table(
+                new[] { "OrganizaciÃ³n", "ClasificaciÃ³n", "DescripciÃ³n" },
+                ageRows));
+        }
+
+        */
+        var languageRows = GetNestedItems(game, "language_supports")
+            .Select(item => new[]
+            {
+                GetNestedString(item, "language", "name") ?? "Sin idioma",
+                GetNestedString(item, "language_support_type", "name") ?? ""
+            })
+            .DistinctBy(row => string.Join("|", row), StringComparer.OrdinalIgnoreCase)
+            .OrderBy(row => row[0])
+            .Take(100)
+            .ToList();
+
+        /*
+        if (false)
+        {
+            blocks.Add(Heading("Idiomas soportados"));
+            blocks.Add(Table(
+                new[] { "Idioma", "Tipo de soporte" },
+                languageRows));
+        }
+
+        */
+        if (ageRows.Count > 0 || languageRows.Count > 0)
+        {
+            blocks.Add(TwoColumnTables(ageRows, languageRows));
+        }
+
+        blocks.Add(Heading("Fuente"));
+        blocks.Add(Paragraph("Datos proporcionados por IGDB: https://www.igdb.com/"));
+
+        return blocks;
+    }
+
+    private static List<string> GetImageUrls(
+        JsonElement game,
+        string property,
+        string size)
+    {
+        return GetNestedItems(game, property)
+            .Select(item => GetString(item, "image_id"))
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Select(id => $"https://images.igdb.com/igdb/image/upload/{size}/{id}.jpg")
+            .ToList()!;
     }
 
     private async Task SyncDlcDatabaseAsync(
@@ -359,7 +534,6 @@ var igdbId = idProperty.GetInt32();
                     var createProperties = new Dictionary<string, object>(
                         automaticProperties)
                     {
-                        ["Lo tengo"] = Checkbox(false),
                         ["Notas"] = RichText(
                             "Creado automáticamente desde IGDB.")
                     };
@@ -390,8 +564,7 @@ var igdbId = idProperty.GetInt32();
 
     private static JsonElement? SelectCandidate(
         List<JsonElement> candidates,
-        string requestedName,
-        List<string> requestedPlatforms)
+        string requestedName)
     {
         var exact = candidates
             .Where(x =>
@@ -406,16 +579,9 @@ var igdbId = idProperty.GetInt32();
             return exact[0];
         }
 
-        var platformMatch = candidates
-            .Where(x =>
-                GetNestedNames(x, "platforms")
-                    .Any(p => requestedPlatforms.Any(r =>
-                        p.Contains(r, StringComparison.OrdinalIgnoreCase) ||
-                        r.Contains(p, StringComparison.OrdinalIgnoreCase))))
-            .ToList();
-
-        return platformMatch.Count == 1
-            ? platformMatch[0]
+        // La plataforma poseída se gestiona posteriormente en Mi colección.
+        return exact.Count == 0 && candidates.Count == 1
+            ? candidates[0]
             : null;
     }
 
@@ -446,26 +612,39 @@ var igdbId = idProperty.GetInt32();
         return string.Empty;
     }
 
-    private static List<string> GetMultiSelect(
+    private static string? GetSelectName(
         JsonElement properties,
         string propertyName)
     {
-        if (!properties.TryGetProperty(propertyName, out var property))
+        if (!properties.TryGetProperty(propertyName, out var property) ||
+            property.GetProperty("type").GetString() != "select")
         {
-            return [];
+            return null;
         }
 
-        if (property.GetProperty("type").GetString() != "multi_select")
+        var select = property.GetProperty("select");
+
+        return select.ValueKind == JsonValueKind.Null
+            ? null
+            : GetString(select, "name");
+    }
+
+    private static int? GetNumber(
+        JsonElement properties,
+        string propertyName)
+    {
+        if (!properties.TryGetProperty(propertyName, out var property) ||
+            property.GetProperty("type").GetString() != "number")
         {
-            return [];
+            return null;
         }
 
-        return property
-            .GetProperty("multi_select")
-            .EnumerateArray()
-            .Select(x => GetString(x, "name"))
-            .Where(x => !string.IsNullOrWhiteSpace(x))
-            .ToList()!;
+        var number = property.GetProperty("number");
+
+        return number.ValueKind == JsonValueKind.Number &&
+               number.TryGetInt32(out var value)
+            ? value
+            : null;
     }
 
     private static string? GetString(
@@ -696,12 +875,6 @@ var igdbId = idProperty.GetInt32();
             }
         };
 
-    private static object Checkbox(bool value) =>
-        new
-        {
-            checkbox = value
-        };
-
     private static object Date(string date) =>
         new
         {
@@ -770,7 +943,7 @@ var igdbId = idProperty.GetInt32();
                         type = "text",
                         text = new
                         {
-                            content = text
+                            content = NormalizeText(text)
                         }
                     }
                 }
@@ -791,7 +964,7 @@ var igdbId = idProperty.GetInt32();
                         type = "text",
                         text = new
                         {
-                            content = text
+                            content = NormalizeText(text)
                         }
                     }
                 }
@@ -812,9 +985,177 @@ var igdbId = idProperty.GetInt32();
                         type = "text",
                         text = new
                         {
-                            content = text
+                            content = NormalizeText(text)
                         }
                     }
+                }
+            }
+        };
+
+    private static object Image(string url, string caption) =>
+        new
+        {
+            @object = "block",
+            type = "image",
+            image = new
+            {
+                type = "external",
+                external = new
+                {
+                    url
+                },
+                caption = Caption(caption)
+            }
+        };
+
+    private static object Video(string url, string caption) =>
+        new
+        {
+            @object = "block",
+            type = "video",
+            video = new
+            {
+                type = "external",
+                external = new
+                {
+                    url
+                },
+                caption = Caption(caption)
+            }
+        };
+
+    private static object CenteredImage(string url) =>
+        ColumnList(
+            Column(Paragraph(" ")),
+            Column(Image(url, "Portada")),
+            Column(Paragraph(" ")));
+
+    private static object TwoColumnTables(
+        List<string[]> ageRows,
+        List<string[]> languageRows)
+    {
+        var ageContent = ageRows.Count > 0
+            ? new object[]
+            {
+                Heading("Clasificaci\u00f3n por edades"),
+                Table(
+                    new[] { "Organizaci\u00f3n", "Clasificaci\u00f3n", "Descripci\u00f3n" },
+                    ageRows)
+            }
+            : new object[] { Paragraph("Sin datos de clasificaci\u00f3n") };
+
+        var languageContent = languageRows.Count > 0
+            ? new object[]
+            {
+                Heading("Idiomas soportados"),
+                Table(
+                    new[] { "Idioma", "Tipo de soporte" },
+                    languageRows)
+            }
+            : new object[] { Paragraph("Sin datos de idiomas") };
+
+        return ColumnList(
+            Column(ageContent),
+            Column(languageContent));
+    }
+
+    private static object ColumnList(params object[] columns) =>
+        new
+        {
+            @object = "block",
+            type = "column_list",
+            column_list = new
+            {
+                children = columns
+            }
+        };
+
+    private static object Column(params object[] children) =>
+        new
+        {
+            @object = "block",
+            type = "column",
+            column = new
+            {
+                children
+            }
+        };
+
+    private static object Table(
+        string[] headers,
+        List<string[]> rows)
+    {
+        var allRows = new List<string[]> { headers };
+        allRows.AddRange(rows);
+
+        return new
+        {
+            @object = "block",
+            type = "table",
+            table = new
+            {
+                table_width = headers.Length,
+                has_column_header = true,
+                has_row_header = false,
+                children = allRows
+                    .Select(TableRow)
+                    .ToArray()
+            }
+        };
+    }
+
+    private static object TableRow(string[] values) =>
+        new
+        {
+            @object = "block",
+            type = "table_row",
+            table_row = new
+            {
+                cells = values
+                    .Select(value => new[]
+                    {
+                        new
+                        {
+                            type = "text",
+                            text = new
+                            {
+                                content = NormalizeText(Truncate(value ?? "", 1900))
+                            }
+                        }
+                    })
+                    .ToArray()
+            }
+        };
+
+    private static string NormalizeText(string text)
+    {
+        return text
+            .Replace("ÃƒÂ¡", "\u00e1")
+            .Replace("ÃƒÂ©", "\u00e9")
+            .Replace("ÃƒÂ­", "\u00ed")
+            .Replace("ÃƒÂ³", "\u00f3")
+            .Replace("ÃƒÂº", "\u00fa")
+            .Replace("ÃƒÂ±", "\u00f1")
+            .Replace("ÃƒÂ¼", "\u00fc")
+            .Replace("Ã¡", "\u00e1")
+            .Replace("Ã©", "\u00e9")
+            .Replace("Ã­", "\u00ed")
+            .Replace("Ã³", "\u00f3")
+            .Replace("Ãº", "\u00fa")
+            .Replace("Ã±", "\u00f1")
+            .Replace("Ã¼", "\u00fc")
+            .Replace("â€”", "\u2014");
+    }
+
+    private static object[] Caption(string text) =>
+        new object[]
+        {
+            new
+            {
+                type = "text",
+                text = new
+                {
+                    content = NormalizeText(text)
                 }
             }
         };

@@ -67,7 +67,11 @@ public sealed class IgdbClient
         using var response = await _http.SendAsync(request);
         var json = await response.Content.ReadAsStringAsync();
 
-        response.EnsureSuccessStatusCode();
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new HttpRequestException(
+                $"IGDB rechazÃ³ la consulta ({(int)response.StatusCode}): {json}");
+        }
 
         return JsonDocument.Parse(json);
     }
@@ -106,6 +110,15 @@ public sealed class IgdbClient
               involved_companies.publisher,
               rating,
               aggregated_rating,
+              age_ratings.organization.name,
+              age_ratings.rating_category.rating,
+              age_ratings.synopsis,
+              language_supports.language.name,
+              language_supports.language_support_type.name,
+              release_dates.date,
+              release_dates.human,
+              release_dates.platform.name,
+              release_dates.release_region.region,
               dlcs.id,
               dlcs.name,
               expansions.id,
@@ -130,6 +143,8 @@ public sealed class IgdbClient
               version_title,
               screenshots.image_id,
               artworks.image_id,
+              videos.video_id,
+              videos.name,
               url;
             where id = {id};
             """;

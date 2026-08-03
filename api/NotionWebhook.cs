@@ -105,7 +105,8 @@ public sealed class NotionWebhook
             ? typeProperty.GetString()
             : null;
 
-        if (eventType != "page.created")
+        if (eventType != "page.created" &&
+            eventType != "page.properties_updated")
         {
             return await Response(
                 request,
@@ -128,7 +129,9 @@ public sealed class NotionWebhook
 
         try
         {
-            await _service.ProcessPageAsync(pageId);
+            await _service.ProcessPageAsync(
+                pageId,
+                eventType == "page.properties_updated");
 
             return await Response(
                 request,
