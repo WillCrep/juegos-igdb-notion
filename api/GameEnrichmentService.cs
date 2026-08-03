@@ -1,20 +1,24 @@
 using System.Globalization;
 using System.Text.Json;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
 public sealed class GameEnrichmentService
 {
     private readonly IgdbClient _igdb;
     private readonly NotionClient _notion;
+    private readonly IConfiguration _configuration;
     private readonly ILogger<GameEnrichmentService> _logger;
 
     public GameEnrichmentService(
         IgdbClient igdb,
         NotionClient notion,
+        IConfiguration configuration,
         ILogger<GameEnrichmentService> logger)
     {
         _igdb = igdb;
         _notion = notion;
+        _configuration = configuration;
         _logger = logger;
     }
 
@@ -165,10 +169,10 @@ var igdbId = idProperty.GetInt32();
             ["IGDB ID"] = Number(igdbId),
             ["IGDB rating"] = Number(rating),
             ["IGDB URL"] = Url(igdbUrl),
-            ["Franquicia"] = RichText(
-                string.Join(", ", franchises)),
+            ["Franquicia"] = MultiSelect(franchises),
             ["Desarrolladores"] = MultiSelect(developers),
             ["Publishers"] = MultiSelect(publishers),
+            ["Género"] = MultiSelect(genres),
             ["Plataformas IGDB"] = MultiSelect(igdbPlatforms),
             ["Última sincronización"] = Date(
                 DateTime.UtcNow.ToString("yyyy-MM-dd"))
@@ -211,7 +215,15 @@ var igdbId = idProperty.GetInt32();
 
         var dlcs = GetNestedItems(game, "dlcs");
         var expansions = GetNestedItems(game, "expansions");
+        var standaloneExpansions = GetNestedItems(game, "standalone_expansions");
         var bundles = GetNestedItems(game, "bundles");
+
+        await SyncDlcDatabaseAsync(
+            pageId,
+            dlcs,
+            expansions,
+            standaloneExpansions,
+            bundles);
 
         if (dlcs.Count > 0)
         {
@@ -227,6 +239,16 @@ var igdbId = idProperty.GetInt32();
         {
             blocks.Add(Heading("Expansiones"));
             foreach (var item in expansions.Take(30))
+            {
+                blocks.Add(Bullet(
+                    $"{GetString(item, "name")} — IGDB ID {GetString(item, "id")}"));
+            }
+        }
+
+        if (standaloneExpansions.Count > 0)
+        {
+            blocks.Add(Heading("Expansiones independientes"));
+            foreach (var item in standaloneExpansions.Take(30))
             {
                 blocks.Add(Bullet(
                     $"{GetString(item, "name")} — IGDB ID {GetString(item, "id")}"));
@@ -253,6 +275,117 @@ var igdbId = idProperty.GetInt32();
             "Página {PageId} procesada con IGDB {IgdbId}",
             pageId,
             igdbId);
+    }
+
+    private async Task SyncDlcDatabaseAsync(
+        string baseGamePageId,
+        List<JsonElement> dlcs,
+        List<JsonElement> expansions,
+        List<JsonElement> standaloneExpansions,
+        List<JsonElement> bundles)
+    {
+        var dataSourceId = _configuration["NOTION_DLC_DATA_SOURCE_ID"];
+
+        if (string.IsNullOrWhiteSpace(dataSourceId))
+        {
+            var databaseId = _configuration["NOTION_DLC_DATABASE_ID"];
+
+            if (!string.IsNullOrWhiteSpace(databaseId))
+            {
+                dataSourceId = await _notion.GetDataSourceIdAsync(databaseId);
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(dataSourceId))
+        {
+            _logger.LogWarning(
+                "NOTION_DLC_DATABASE_ID o NOTION_DLC_DATA_SOURCE_ID " +
+                "no está configurado. " +
+                "Se omitirá la sincronización de DLC.");
+
+            return;
+        }
+
+        var groups = new[]
+        {
+            (Type: "DLC", Items: dlcs),
+            (Type: "Expansión", Items: expansions),
+            (Type: "Expansión independiente", Items: standaloneExpansions),
+            (Type: "Bundle", Items: bundles)
+        };
+
+        foreach (var group in groups)
+        {
+            foreach (var item in group.Items)
+            {
+                if (!item.TryGetProperty("id", out var idProperty) ||
+                    idProperty.ValueKind != JsonValueKind.Number ||
+                    !idProperty.TryGetInt32(out var igdbId))
+                {
+                    continue;
+                }
+
+                var name = GetString(item, "name")?.Trim();
+
+                if (string.IsNullOrWhiteSpace(name))
+                {
+                    continue;
+                }
+
+                var releaseDate = GetDate(item, "first_release_date");
+                var platforms = GetNestedNames(item, "platforms");
+                var url = GetString(item, "url");
+
+                var automaticProperties = new Dictionary<string, object>
+                {
+                    ["Nombre"] = Title(name),
+                    ["Juego base"] = Relation(baseGamePageId),
+                    ["IGDB ID"] = Number(igdbId),
+                    ["Tipo"] = Select(group.Type),
+                    ["Fecha de lanzamiento"] = releaseDate is null
+                        ? new { date = (object?)null }
+                        : Date(releaseDate),
+                    ["Plataformas"] = MultiSelect(platforms),
+                    ["IGDB URL"] = Url(url)
+                };
+
+                var existingPageId = await _notion.FindPageByNumberAsync(
+                    dataSourceId,
+                    "IGDB ID",
+                    igdbId);
+
+                if (existingPageId is null)
+                {
+                    var createProperties = new Dictionary<string, object>(
+                        automaticProperties)
+                    {
+                        ["Lo tengo"] = Checkbox(false),
+                        ["Notas"] = RichText(
+                            "Creado automáticamente desde IGDB.")
+                    };
+
+                    await _notion.CreatePageAsync(
+                        dataSourceId,
+                        createProperties);
+
+                    _logger.LogInformation(
+                        "DLC creado en Notion: {Name} ({IgdbId})",
+                        name,
+                        igdbId);
+                }
+                else
+                {
+                    await _notion.UpdatePageAsync(
+                        existingPageId,
+                        automaticProperties);
+
+                    _logger.LogInformation(
+                        "DLC actualizado en Notion: {Name} ({IgdbId})",
+                        name,
+                        igdbId);
+                }
+            }
+        }
     }
 
     private static JsonElement? SelectCandidate(
@@ -533,6 +666,40 @@ var igdbId = idProperty.GetInt32();
         new
         {
             url
+        };
+
+    private static object Title(string text) =>
+        new
+        {
+            title = new[]
+            {
+                new
+                {
+                    type = "text",
+                    text = new
+                    {
+                        content = text
+                    }
+                }
+            }
+        };
+
+    private static object Relation(string pageId) =>
+        new
+        {
+            relation = new[]
+            {
+                new
+                {
+                    id = pageId
+                }
+            }
+        };
+
+    private static object Checkbox(bool value) =>
+        new
+        {
+            checkbox = value
         };
 
     private static object Date(string date) =>

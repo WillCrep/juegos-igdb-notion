@@ -82,6 +82,118 @@ public sealed class NotionClient
         }
     }
 
+    public async Task<string?> FindPageByNumberAsync(
+        string dataSourceId,
+        string propertyName,
+        int value)
+    {
+        using var request = CreateRequest(
+            HttpMethod.Post,
+            $"data_sources/{dataSourceId}/query",
+            new
+            {
+                filter = new
+                {
+                    property = propertyName,
+                    number = new
+                    {
+                        equals = value
+                    }
+                },
+                page_size = 1
+            });
+
+        using var response = await _http.SendAsync(request);
+        var json = await response.Content.ReadAsStringAsync();
+
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new InvalidOperationException(
+                $"Error consultando la base de datos de Notion: " +
+                $"{(int)response.StatusCode} {json}");
+        }
+
+        using var document = JsonDocument.Parse(json);
+        var results = document.RootElement.GetProperty("results");
+
+        if (results.GetArrayLength() == 0)
+        {
+            return null;
+        }
+
+        return results[0].GetProperty("id").GetString();
+    }
+
+    public async Task<string> GetDataSourceIdAsync(string databaseId)
+    {
+        using var request = CreateRequest(
+            HttpMethod.Get,
+            $"databases/{databaseId}");
+
+        using var response = await _http.SendAsync(request);
+        var json = await response.Content.ReadAsStringAsync();
+
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new InvalidOperationException(
+                $"Error obteniendo la base de datos de Notion: " +
+                $"{(int)response.StatusCode} {json}");
+        }
+
+        using var document = JsonDocument.Parse(json);
+
+        if (!document.RootElement.TryGetProperty(
+                "data_sources",
+                out var dataSources) ||
+            dataSources.ValueKind != JsonValueKind.Array ||
+            dataSources.GetArrayLength() == 0)
+        {
+            throw new InvalidOperationException(
+                "No se encontró un data source para la base de datos de DLC.");
+        }
+
+        return dataSources[0]
+            .GetProperty("id")
+            .GetString()
+            ?? throw new InvalidOperationException(
+                "Notion no devolvió el ID del data source.");
+    }
+
+    public async Task<string> CreatePageAsync(
+        string dataSourceId,
+        Dictionary<string, object> properties)
+    {
+        using var request = CreateRequest(
+            HttpMethod.Post,
+            "pages",
+            new
+            {
+                parent = new
+                {
+                    data_source_id = dataSourceId
+                },
+                properties
+            });
+
+        using var response = await _http.SendAsync(request);
+        var json = await response.Content.ReadAsStringAsync();
+
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new InvalidOperationException(
+                $"Error creando página en Notion: " +
+                $"{(int)response.StatusCode} {json}");
+        }
+
+        using var document = JsonDocument.Parse(json);
+
+        return document.RootElement
+            .GetProperty("id")
+            .GetString()
+            ?? throw new InvalidOperationException(
+                "Notion no devolvió el ID de la página creada.");
+    }
+
     public async Task AppendBlocksAsync(
         string pageId,
         List<object> children)
