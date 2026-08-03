@@ -21,28 +21,30 @@ public sealed class GameEnrichmentService
     public async Task ProcessPageAsync(string pageId)
     {
         using var page = await _notion.GetPageAsync(pageId);
-        _logger.LogInformation(
-    "Respuesta completa de Notion para la página {PageId}: {Json}",
-    pageId,
-    page.RootElement.GetRawText());
 
         var properties = page.RootElement.GetProperty("properties");
-_logger.LogInformation(
-    "Propiedades recibidas: {Properties}",
+
+_logger.LogWarning(
+    "Claves del objeto properties: {Keys}",
     string.Join(
         ", ",
         properties.EnumerateObject().Select(p => p.Name)));
+
+
         var gameName = GetTitle(properties);
+
+_logger.LogWarning(
+    "Título extraído: '{GameName}'",
+    gameName);
+
         var ownedPlatforms = GetMultiSelect(properties, "plataforma");
 
         if (string.IsNullOrWhiteSpace(gameName))
-{
-    _logger.LogWarning(
-        "La página {PageId} todavía no tiene título. Se omitirá este evento.",
-        pageId);
-
-    return;
-}
+        {
+            throw new InvalidOperationException(
+                "La página no tiene un  válido"
+            );
+        }
 
         await _notion.UpdatePageAsync(
             pageId,
@@ -125,12 +127,12 @@ _logger.LogInformation(
         }
 
     if (!selected.Value.TryGetProperty("id", out var idProperty))
-    {
-        throw new InvalidOperationException(
-            "El resultado seleccionado de IGDB no contiene id.");
-    }
+{
+    throw new InvalidOperationException(
+        "El resultado seleccionado de IGDB no contiene id.");
+}
 
-    var igdbId = idProperty.GetInt32();
+var igdbId = idProperty.GetInt32();
 
         using var detailDocument = await _igdb.GetGameAsync(igdbId);
 
@@ -193,7 +195,7 @@ _logger.LogInformation(
         var blocks = new List<object>
         {
             Heading("Información de IGDB"),
-            Paragraph($"Nombre: {GetString(game, "name")}"),
+            Paragraph($": {GetString(game, "name")}"),
             Paragraph($"Géneros: {string.Join(", ", genres)}"),
             Paragraph($"Plataformas: {string.Join(", ", igdbPlatforms)}"),
             Paragraph($"Desarrolladores: {string.Join(", ", developers)}"),
@@ -284,59 +286,32 @@ _logger.LogInformation(
             : null;
     }
 
-    private string GetTitle(JsonElement properties)
-{
-    foreach (var property in properties.EnumerateObject())
+    private static string GetTitle(JsonElement properties)
     {
-        var value = property.Value;
-
-        var type = value.TryGetProperty("type", out var typeElement)
-            ? typeElement.GetString()
-            : null;
-
-        _logger.LogInformation(
-            "Propiedad recibida: {PropertyName}, tipo: {PropertyType}",
-            property.Name,
-            type);
-
-        if (type != "title")
-            continue;
-
-        if (!value.TryGetProperty("title", out var title))
+        foreach (var property in properties.EnumerateObject())
         {
-            _logger.LogWarning(
-                "La propiedad {PropertyName} no contiene title",
-                property.Name);
+            var value = property.Value;
 
-            return string.Empty;
+            if (value.GetProperty("type").GetString() != "title")
+            {
+                continue;
+            }
+
+            var title = value.GetProperty("title");
+
+            if (title.GetArrayLength() == 0)
+            {
+                return string.Empty;
+            }
+
+            return title[0]
+                .GetProperty("plain_text")
+                .GetString()
+                ?? string.Empty;
         }
 
-        if (title.ValueKind != JsonValueKind.Array ||
-            title.GetArrayLength() == 0)
-        {
-            _logger.LogWarning(
-                "La propiedad de título {PropertyName} está vacía",
-                property.Name);
-
-            return string.Empty;
-        }
-
-        var text = title[0]
-            .TryGetProperty("plain_text", out var plainText)
-                ? plainText.GetString()
-                : null;
-
-        _logger.LogInformation(
-            "Título obtenido: {Title}",
-            text);
-
-        return text?.Trim() ?? string.Empty;
+        return string.Empty;
     }
-
-    _logger.LogWarning("No se encontró ninguna propiedad de tipo title");
-
-    return string.Empty;
-}
 
     private static List<string> GetMultiSelect(
         JsonElement properties,
