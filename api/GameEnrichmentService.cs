@@ -187,6 +187,23 @@ var igdbId = idProperty.GetInt32();
         var genres = GetNestedNames(game, "genres");
         var igdbPlatforms = GetNestedNames(game, "platforms");
         var franchises = GetFranchiseNames(game);
+        var collection = GetNestedObject(game, "collection");
+
+        JsonDocument? collectionDocument = null;
+
+        if (collection is null)
+        {
+            collectionDocument = await _igdb.GetCollectionForGameAsync(igdbId);
+
+            var collectionFromMembership = collectionDocument.RootElement
+                .EnumerateArray()
+                .FirstOrDefault(item => item.ValueKind == JsonValueKind.Object);
+
+            collection = collectionFromMembership.ValueKind == JsonValueKind.Object
+                ? collectionFromMembership
+                : null;
+        }
+
         var developers = GetCompanies(game, developer: true);
         var publishers = GetCompanies(game, publisher: true);
 
@@ -223,6 +240,23 @@ var igdbId = idProperty.GetInt32();
 
         await _notion.UpdatePageAsync(pageId, pageProperties);
 
+        if (collection is not null)
+        {
+            var seriesPageId = await SyncSeriesDatabaseAsync(collection.Value);
+
+            if (seriesPageId is not null)
+            {
+                var seriesProperty = _configuration["NOTION_GAME_SERIES_PROPERTY"] ?? "Serie";
+
+                await _notion.UpdatePageAsync(
+                    pageId,
+                    new Dictionary<string, object>
+                    {
+                        [seriesProperty] = Relation(seriesPageId)
+                    });
+            }
+        }
+
         var blocks = new List<object>
         {
             Heading("Información de IGDB"),
@@ -233,6 +267,11 @@ var igdbId = idProperty.GetInt32();
             Paragraph($"Publishers: {string.Join(", ", publishers)}"),
             Paragraph($"Franquicia: {string.Join(", ", franchises)}")
         };
+
+        if (collection is not null)
+        {
+            blocks.Add(Paragraph($"Colección: {GetString(collection.Value, "name")}"));
+        }
 
         if (!string.IsNullOrWhiteSpace(summary))
         {
@@ -301,6 +340,8 @@ var igdbId = idProperty.GetInt32();
         blocks = BuildGameContentBlocks(game, summary, coverUrl);
 
         await _notion.AppendBlocksAsync(pageId, blocks);
+
+        collectionDocument?.Dispose();
 
         _logger.LogInformation(
             "Página {PageId} procesada con IGDB {IgdbId}",
@@ -562,6 +603,161 @@ var igdbId = idProperty.GetInt32();
         }
     }
 
+    private async Task<string?> SyncSeriesDatabaseAsync(
+        JsonElement collection)
+    {
+        var dataSourceId = _configuration["NOTION_SERIES_DATA_SOURCE_ID"];
+
+        if (string.IsNullOrWhiteSpace(dataSourceId))
+        {
+            var databaseId = _configuration["NOTION_SERIES_DATABASE_ID"];
+
+            if (!string.IsNullOrWhiteSpace(databaseId))
+            {
+                dataSourceId = await _notion.GetDataSourceIdAsync(databaseId);
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(dataSourceId))
+        {
+            _logger.LogWarning(
+                "NOTION_SERIES_DATABASE_ID o NOTION_SERIES_DATA_SOURCE_ID no está configurado. " +
+                "Se omitirá la sincronización de colecciones.");
+            return null;
+        }
+
+        if (!collection.TryGetProperty("id", out var idProperty) ||
+            !idProperty.TryGetInt32(out var collectionId))
+        {
+            return null;
+        }
+
+        var collectionName = GetString(collection, "name")?.Trim();
+
+        if (string.IsNullOrWhiteSpace(collectionName))
+        {
+            return null;
+        }
+
+        var games = GetNestedItems(collection, "games")
+            .Where(item => !string.IsNullOrWhiteSpace(GetString(item, "name")))
+            .GroupBy(item => GetString(item, "id"))
+            .Select(group => group.First())
+            .OrderBy(item => GetString(item, "first_release_date"))
+            .ThenBy(item => GetString(item, "name"))
+            .ToList();
+
+        var properties = new Dictionary<string, object>
+        {
+            ["Nombre"] = Title(collectionName),
+            ["IGDB ID"] = Number(collectionId),
+            ["Total juegos IGDB"] = Number(games.Count),
+            ["Última sincronización"] = Date(DateTime.UtcNow.ToString("yyyy-MM-dd"))
+        };
+
+        var collectionUrl = GetString(collection, "url");
+
+        if (!string.IsNullOrWhiteSpace(collectionUrl))
+        {
+            properties["IGDB URL"] = Url(collectionUrl);
+        }
+
+        var existingPageId = await _notion.FindPageByNumberAsync(
+            dataSourceId,
+            "IGDB ID",
+            collectionId);
+
+        if (existingPageId is not null)
+        {
+            await _notion.UpdatePageAsync(existingPageId, properties);
+            await EnsureSeriesChecklistAsync(existingPageId, games);
+            return existingPageId;
+        }
+
+        properties["Notas"] = RichText(
+            "Colección creada automáticamente desde IGDB. La relación Juegos se completa desde la base de biblioteca.");
+
+        var seriesPageId = await _notion.CreatePageAsync(dataSourceId, properties);
+
+        var checklist = new List<object>
+        {
+            Heading("Juegos de la colección")
+        };
+
+        checklist.AddRange(games.Select(game => ToDo(
+            $"{GetString(game, "name")} — IGDB ID {GetString(game, "id")}")));
+
+        if (checklist.Count > 1)
+        {
+            await _notion.AppendBlocksAsync(seriesPageId, checklist);
+        }
+
+        _logger.LogInformation(
+            "Colección creada en Notion: {Name} ({IgdbId}) con {Count} juegos.",
+            collectionName,
+            collectionId,
+            games.Count);
+
+        return seriesPageId;
+    }
+
+    private async Task EnsureSeriesChecklistAsync(
+        string seriesPageId,
+        List<JsonElement> games)
+    {
+        var checklistItems = games
+            .Select(game =>
+            {
+                var text =
+                    $"{GetString(game, "name")} — IGDB ID {GetString(game, "id")}";
+
+                return (Text: text, Block: ToDo(text));
+            })
+            .ToList();
+
+        using var childrenDocument = await _notion.GetBlockChildrenAsync(seriesPageId);
+        var existingTexts = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var hasChecklistHeading = false;
+
+        if (childrenDocument.RootElement.TryGetProperty("results", out var results) &&
+            results.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var block in results.EnumerateArray())
+            {
+                var blockType = GetString(block, "type");
+
+                if (blockType == "heading_2")
+                {
+                    var headingText = GetBlockText(block, "heading_2");
+                    hasChecklistHeading = string.Equals(
+                        headingText,
+                        "Juegos de la colección",
+                        StringComparison.OrdinalIgnoreCase);
+                }
+
+                if (blockType == "to_do")
+                {
+                    existingTexts.Add(GetBlockText(block, "to_do"));
+                }
+            }
+        }
+
+        var missingBlocks = checklistItems
+            .Where(item => !existingTexts.Contains(item.Text))
+            .Select(item => item.Block)
+            .ToList();
+
+        if (!hasChecklistHeading)
+        {
+            missingBlocks.Insert(0, Heading("Juegos de la colección"));
+        }
+
+        if (missingBlocks.Count > 0)
+        {
+            await _notion.AppendBlocksAsync(seriesPageId, missingBlocks);
+        }
+    }
+
     private static JsonElement? SelectCandidate(
         List<JsonElement> candidates,
         string requestedName)
@@ -658,6 +854,22 @@ var igdbId = idProperty.GetInt32();
             : null;
     }
 
+    private static string GetBlockText(
+        JsonElement block,
+        string blockType)
+    {
+        if (!block.TryGetProperty(blockType, out var content) ||
+            !content.TryGetProperty("rich_text", out var richText) ||
+            richText.ValueKind != JsonValueKind.Array)
+        {
+            return string.Empty;
+        }
+
+        return string.Join(
+            string.Empty,
+            richText.EnumerateArray().Select(item => GetString(item, "plain_text") ?? string.Empty));
+    }
+
     private static string? GetNestedString(
         JsonElement element,
         string first,
@@ -669,6 +881,16 @@ var igdbId = idProperty.GetInt32();
         }
 
         return GetString(nested, second);
+    }
+
+    private static JsonElement? GetNestedObject(
+        JsonElement element,
+        string property)
+    {
+        return element.TryGetProperty(property, out var value) &&
+               value.ValueKind == JsonValueKind.Object
+            ? value
+            : null;
     }
 
     private static double? GetDouble(
@@ -989,6 +1211,28 @@ var igdbId = idProperty.GetInt32();
                         }
                     }
                 }
+            }
+        };
+
+    private static object ToDo(string text) =>
+        new
+        {
+            @object = "block",
+            type = "to_do",
+            to_do = new
+            {
+                rich_text = new[]
+                {
+                    new
+                    {
+                        type = "text",
+                        text = new
+                        {
+                            content = NormalizeText(text)
+                        }
+                    }
+                },
+                @checked = false
             }
         };
 

@@ -103,6 +103,12 @@ public sealed class IgdbClient
               cover.image_id,
               genres.name,
               platforms.name,
+              collection.id,
+              collection.name,
+              collection.url,
+              collection.games.id,
+              collection.games.name,
+              collection.games.first_release_date,
               franchise.name,
               franchises.name,
               involved_companies.company.name,
@@ -150,5 +156,45 @@ public sealed class IgdbClient
             """;
 
         return await QueryAsync("games", query);
+    }
+
+    public async Task<JsonDocument> GetCollectionForGameAsync(int gameId)
+    {
+        var membershipQuery = $"""
+            fields collection;
+            where game = {gameId};
+            """;
+
+        using var memberships = await QueryAsync(
+            "collection_memberships",
+            membershipQuery);
+
+        var collectionIds = memberships.RootElement
+            .EnumerateArray()
+            .Where(item =>
+                item.TryGetProperty("collection", out var collection) &&
+                collection.ValueKind == JsonValueKind.Number &&
+                collection.TryGetInt32(out _))
+            .Select(item => item.GetProperty("collection").GetInt32())
+            .Distinct()
+            .ToList();
+
+        if (collectionIds.Count == 0)
+        {
+            return JsonDocument.Parse("[]");
+        }
+
+        var collectionsQuery = $"""
+            fields
+              id,
+              name,
+              url,
+              games.id,
+              games.name,
+              games.first_release_date;
+            where id = ({string.Join(",", collectionIds)});
+            """;
+
+        return await QueryAsync("collections", collectionsQuery);
     }
 }

@@ -198,21 +198,42 @@ public sealed class NotionClient
         string pageId,
         List<object> children)
     {
-        using var request = CreateRequest(
-            new HttpMethod("PATCH"),
-            $"blocks/{pageId}/children",
-            new
+        foreach (var batch in children.Chunk(100))
+        {
+            using var request = CreateRequest(
+                new HttpMethod("PATCH"),
+                $"blocks/{pageId}/children",
+                new
+                {
+                    children = batch
+                });
+
+            using var response = await _http.SendAsync(request);
+
+            if (!response.IsSuccessStatusCode)
             {
-                children
-            });
-        
+                var error = await response.Content.ReadAsStringAsync();
+                throw new InvalidOperationException(
+                    $"Error agregando bloques: {(int)response.StatusCode} {error}");
+            }
+        }
+    }
+
+    public async Task<JsonDocument> GetBlockChildrenAsync(string blockId)
+    {
+        using var request = CreateRequest(
+            HttpMethod.Get,
+            $"blocks/{blockId}/children?page_size=100");
+
         using var response = await _http.SendAsync(request);
+        var json = await response.Content.ReadAsStringAsync();
 
         if (!response.IsSuccessStatusCode)
         {
-            var error = await response.Content.ReadAsStringAsync();
             throw new InvalidOperationException(
-                $"Error agregando bloques: {(int)response.StatusCode} {error}");
+                $"Error obteniendo bloques: {(int)response.StatusCode} {json}");
         }
+
+        return JsonDocument.Parse(json);
     }
 }
