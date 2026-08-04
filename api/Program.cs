@@ -8,6 +8,7 @@ var host = new HostBuilder()
 {
     services.AddHttpClient<IgdbClient>();
     services.AddHttpClient<NotionClient>();
+    services.AddHttpClient<AiConsultantService>();
     services.AddSingleton<GameEnrichmentService>();
 
     // Agregar Application Insights
