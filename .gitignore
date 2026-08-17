@@ -60,3 +60,16 @@ api/local.settings.json
 api/bin/
 api/obj/
 .vscode/
+
+# TrophiesHunter scraper: keep local and never commit browser state/dependencies
+node_modules/
+.trophieshunter-browser/
+tools/
+package.json
+package-lock.json
+
+# Local achievement exports used for testing/import
+dead-cells-android.json
+god-of-war-ps4.json
+jump-force-steam.json
+naruto-ultimate-ninja-storm-xboxSeriesS.json

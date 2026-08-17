@@ -84,7 +84,7 @@ public sealed class IgdbClient
 
         var query = $"""
         search "{safeName}";
-        fields id,name,platforms.name,version_parent,first_release_date;
+        fields id,name,cover.image_id,platforms.name,version_parent,first_release_date;
         limit 10;
         """;
 
@@ -94,68 +94,40 @@ public sealed class IgdbClient
     public async Task<JsonDocument> GetGameAsync(int id)
     {
         var query = $"""
-            fields
-              id,
-              name,
-              summary,
-              storyline,
-              first_release_date,
-              cover.image_id,
-              genres.name,
-              platforms.name,
-              collection.id,
-              collection.name,
-              collection.url,
-              collection.games.id,
-              collection.games.name,
-              collection.games.first_release_date,
-              franchise.name,
-              franchises.name,
-              involved_companies.company.name,
-              involved_companies.developer,
-              involved_companies.publisher,
-              rating,
-              aggregated_rating,
-              age_ratings.organization.name,
-              age_ratings.rating_category.rating,
-              age_ratings.synopsis,
-              language_supports.language.name,
-              language_supports.language_support_type.name,
-              release_dates.date,
-              release_dates.human,
-              release_dates.platform.name,
-              release_dates.release_region.region,
-              dlcs.id,
-              dlcs.name,
-              expansions.id,
-              expansions.name,
-              bundles.id,
-              bundles.name,
-              bundles.first_release_date,
-              bundles.platforms.name,
-              bundles.url,
-              dlcs.first_release_date,
-              dlcs.platforms.name,
-              dlcs.url,
-              expansions.first_release_date,
-              expansions.platforms.name,
-              expansions.url,
-              standalone_expansions.id,
-              standalone_expansions.name,
-              standalone_expansions.first_release_date,
-              standalone_expansions.platforms.name,
-              standalone_expansions.url,
-              version_parent,
-              version_title,
-              screenshots.image_id,
-              artworks.image_id,
-              videos.video_id,
-              videos.name,
-              url;
+            fields id,name,summary,storyline,first_release_date,cover.image_id,genres.name,platforms.name,
+              collection.id,collection.name,collection.url,collection.games.id,collection.games.name,collections,
+              franchise.id,franchise.name,franchise.url,franchises.id,franchises.name,franchises.url,
+              involved_companies.company.name,involved_companies.developer,involved_companies.publisher,
+              rating,aggregated_rating,dlcs.id,dlcs.name,dlcs.first_release_date,dlcs.platforms.name,dlcs.url,
+              expansions.id,expansions.name,expansions.first_release_date,expansions.platforms.name,expansions.url,
+              standalone_expansions.id,standalone_expansions.name,standalone_expansions.first_release_date,standalone_expansions.platforms.name,standalone_expansions.url,
+              bundles.id,bundles.name,bundles.first_release_date,bundles.platforms.name,bundles.url,
+              version_parent,version_title,screenshots.image_id,artworks.image_id,videos.video_id,videos.name,url;
             where id = {id};
             """;
 
         return await QueryAsync("games", query);
+    }
+
+    public async Task<JsonDocument> GetCollectionsAsync(IEnumerable<int> ids)
+    {
+        var values = ids.Distinct().ToArray();
+        if (values.Length == 0) return JsonDocument.Parse("[]");
+        return await QueryAsync("collections", $"fields id,name,url,type,games; where id = ({string.Join(',', values)});");
+    }
+
+    public async Task<JsonDocument> GetFranchisesAsync(IEnumerable<int> ids)
+    {
+        var values = ids.Distinct().ToArray();
+        if (values.Length == 0) return JsonDocument.Parse("[]");
+        return await QueryAsync("franchises", $"fields id,name,url,games; where id = ({string.Join(',', values)});");
+    }
+
+    public async Task<JsonDocument> GetRelatedGamesAsync(IEnumerable<int> ids)
+    {
+        var values = ids.Distinct().ToArray();
+        if (values.Length == 0) return JsonDocument.Parse("[]");
+        return await QueryAsync("games", $"fields id,name,url,summary,first_release_date,cover.image_id,platforms.name,parent_game; where id = ({string.Join(',', values)});");
     }
 
     public async Task<JsonDocument> GetCollectionForGameAsync(int gameId)

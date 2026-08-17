@@ -169,9 +169,26 @@ Configurar estas variables como Application Settings de la Function App/Static W
 | `COSMOS_DATABASE_ID` | Base de datos de perfiles. Por defecto: `AiConsultant`. | No |
 | `COSMOS_CONTAINER_ID` | Contenedor JSON. Por defecto: `PromptProfiles`. | No |
 | `COSMOS_PARTITION_KEY_PATH` | Ruta de partición si el contenedor se crea desde cero. Por defecto: `/id`. Para `configurations`, usar `/partitionKey`. | No |
+| `SQL_CONNECTION_STRING` | Cadena de conexión de Azure SQL para la biblioteca de juegos. | Sí, para la biblioteca |
 | `AI_ADMIN_KEY` | Clave para crear/editar/eliminar prompts personalizados. | Sí, para administrar |
 
 Si no se configura la base de series o DLC, el enriquecimiento del juego continúa, pero se omite esa sincronización.
+
+### Biblioteca web y Azure SQL
+
+La portada de `src/index.html` funciona como dashboard de la biblioteca y consume estos endpoints:
+
+- `GET /api/library/stats`
+- `GET /api/library/games?search=&status=&page=&pageSize=`
+- `GET /api/library/games/{id}`
+- `POST /api/library/games`
+- `GET /api/igdb/search?q=`
+- `POST /api/library/games/import` con `{ "igdbId": 123 }`
+- `PATCH /api/library/games/{id}`
+- `GET /api/library/games/{id}/achievements`
+- `PATCH /api/library/achievements/{id}` con `{ "unlocked": true|false }`
+
+Ejecutar primero `schema.sql` en la base Azure SQL vacía y configurar `SQL_CONNECTION_STRING` en Application Settings. La interfaz utiliza HTML, CSS y JavaScript vanilla; las fuentes tipográficas se cargan desde Google Fonts.
 
 No guardar secretos en el repositorio. Para Azure usar Application Settings/secretos de GitHub; para local usar `local.settings.json` y mantenerlo fuera de control de versiones.
 
@@ -296,3 +313,10 @@ Extensiones naturales: conectar formalmente el cliente de Cosmos DB, incorporar 
 ## Licencia y fuentes
 
 El proyecto consume datos de IGDB y utiliza la API de Notion. Revisar sus términos, límites y requisitos de atribución antes de publicar el servicio. Las fichas generadas incluyen una referencia a `https://www.igdb.com/` como fuente de los datos.
+### Plataformas retro
+
+Para ampliar el catálogo de plataformas de una base existente, ejecuta una vez
+[`schema-upgrade-platforms.sql`](schema-upgrade-platforms.sql) en Azure SQL. El
+importador de TrophiesHunter reconoce, entre otras, PlayStation, PS2, PS3, PSP,
+PS Vita, Game Boy, Game Boy Color, Game Boy Advance, Nintendo DS/3DS, N64,
+GameCube, SNES, Mega Drive, Dreamcast, Saturn y Arcade.
