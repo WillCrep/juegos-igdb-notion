@@ -96,7 +96,7 @@ Se utiliza Azure Static Web Apps como punto de publicación único para el front
 
 - entrega el contenido estático de `src`;
 - publica `api` como Azure Functions;
-- configura el runtime `dotnet-isolated:9.0`;
+- configura el runtime `dotnet-isolated:8.0`;
 - expone la API bajo `/api/*`;
 - ejecuta el despliegue desde GitHub Actions;
 - usa el token `AZURE_STATIC_WEB_APPS_API_TOKEN_JOLLY_MUD_018639F0F` almacenado como secreto de GitHub.
@@ -137,7 +137,7 @@ La API registra eventos mediante `ILogger` y está preparada para Application In
 
 ## Tecnologías
 
-- C# y .NET 9.
+- C# y .NET 8.
 - Azure Functions v4, modelo isolated worker.
 - Azure Static Web Apps.
 - Azure Cosmos DB Free Tier para JSON/configuración auxiliar.
@@ -231,7 +231,7 @@ Los demás tipos de evento se responden como ignorados. La API valida `X-Notion-
 
 Requisitos:
 
-- .NET 9 SDK;
+- .NET 8 SDK;
 - Azure Functions Core Tools v4;
 - credenciales de IGDB/Twitch;
 - una integración y páginas de prueba en Notion.
