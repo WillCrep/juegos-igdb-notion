@@ -16,6 +16,8 @@ public sealed class LibraryFunctions
     public Task<HttpResponseData> IgdbSearch([HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "igdb/search")] HttpRequestData request)
     {
         var query = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(request.Url.Query);
+        if (query.TryGetValue("id", out var idValue) && int.TryParse(idValue.ToString(), out var igdbId) && igdbId > 0)
+            return Execute(request, () => igdbLibrary.SearchAsync(string.Empty, igdbId));
         var text = query.TryGetValue("q", out var value) ? value.ToString().Trim() : string.Empty;
         if (text.Length < 2) return Json(request, HttpStatusCode.BadRequest, new { error = "Escribe al menos dos caracteres." });
         return Execute(request, () => igdbLibrary.SearchAsync(text));

@@ -8,9 +8,11 @@ public sealed class IgdbLibraryService
     private readonly string? connectionString = Environment.GetEnvironmentVariable("SQL_CONNECTION_STRING");
     public IgdbLibraryService(IgdbClient igdb) => this.igdb = igdb;
 
-    public async Task<IReadOnlyList<IgdbSearchResult>> SearchAsync(string text)
+    public async Task<IReadOnlyList<IgdbSearchResult>> SearchAsync(string text, int? igdbId = null)
     {
-        using var document = await igdb.SearchGamesAsync(text);
+        using var document = igdbId is > 0
+            ? await igdb.GetGameAsync(igdbId.Value)
+            : await igdb.SearchGamesAsync(text);
         return document.RootElement.EnumerateArray().Select(game => new IgdbSearchResult(
             game.GetProperty("id").GetInt32(), game.GetProperty("name").GetString() ?? "Sin nombre",
             game.TryGetProperty("cover", out var cover) && cover.TryGetProperty("image_id", out var image) ? CoverUrl(image.GetString()) : null,
