@@ -1,3 +1,4 @@
+using System.Data;
 using System.Net;
 using System.Text.Json;
 using FinanceApp.Models;
@@ -16,7 +17,9 @@ public class AuthFunctions
         _connectionString = Environment.GetEnvironmentVariable("SQL_CONNECTION_STRING") ?? string.Empty;
     }
 
-    // POST /api/auth/register
+    // =========================================================================
+    // 1. REGISTRO DE USUARIO (POST /api/auth/register)
+    // =========================================================================
     [Function("Register")]
     public async Task<HttpResponseData> Register([HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "auth/register")] HttpRequestData req)
     {
@@ -29,7 +32,7 @@ public class AuthFunctions
         using var conn = new SqlConnection(_connectionString);
         await conn.OpenAsync();
 
-        // 1. Validar si ya existe el correo
+        // 1.1 Validar si el correo ya existe
         using (var cmd = new SqlCommand("SELECT 1 FROM BnkUsers WHERE Email = @Email", conn))
         {
             cmd.Parameters.AddWithValue("@Email", dto.Email.ToLower().Trim());
@@ -45,7 +48,7 @@ public class AuthFunctions
         using var tx = conn.BeginTransaction();
         try
         {
-            // 2. Insertar Usuario
+            // 1.2 Insertar Usuario
             int userId;
             var hash = AuthHelper.HashPassword(dto.Password);
             var insertUserSql = @"
@@ -65,20 +68,21 @@ public class AuthFunctions
             string? householdName = null;
             string role = "MEMBER";
 
-            // 3. Crear o Unirse a Hogar
+            // 1.3 Unirse a Hogar existente si envió código
             if (!string.IsNullOrWhiteSpace(dto.InviteCode))
             {
-                // Unirse a Hogar existente
                 var findHomeSql = "SELECT HouseholdId, Name FROM BnkHouseholds WHERE InviteCode = @Code";
                 using (var cmd = new SqlCommand(findHomeSql, conn, tx))
                 {
                     cmd.Parameters.AddWithValue("@Code", dto.InviteCode.Trim().ToUpper());
-                    using var reader = await cmd.ExecuteReaderAsync();
-                    if (await reader.ReadAsync())
+                    using (var reader = await cmd.ExecuteReaderAsync())
                     {
-                        householdId = reader.GetInt32(0);
-                        householdName = reader.GetString(1);
-                    }
+                        if (await reader.ReadAsync())
+                        {
+                            householdId = reader.GetInt32(0);
+                            householdName = reader.GetString(1);
+                        }
+                    } // 👈 El reader se cierra aquí
                 }
 
                 if (householdId.HasValue)
@@ -90,9 +94,9 @@ public class AuthFunctions
                     await cmd.ExecuteNonQueryAsync();
                 }
             }
+            // 1.4 Crear nuevo Hogar si envió nombre
             else if (!string.IsNullOrWhiteSpace(dto.HouseholdName))
             {
-                // Crear nuevo Hogar
                 role = "ADMIN";
                 householdName = dto.HouseholdName;
                 var inviteCode = "CASA-" + Random.Shared.Next(1000, 9999);
@@ -119,12 +123,17 @@ public class AuthFunctions
                 }
             }
 
+            // 1.5 Crear Token de sesión en BD
+            var token = await AuthHelper.CreateSessionTokenAsync(conn, tx, userId);
+
             tx.Commit();
 
-            
-            var token = await AuthHelper.CreateSessionTokenAsync(conn, tx, userId);
             var res = req.CreateResponse(HttpStatusCode.Created);
-            await res.WriteAsJsonAsync(new { token, user = new { userId, fullName = dto.FullName, email = dto.Email }, household = new { householdId, name = householdName, role } });
+            await res.WriteAsJsonAsync(new { 
+                token, 
+                user = new { userId, fullName = dto.FullName, email = dto.Email }, 
+                household = new { householdId, name = householdName, role } 
+            });
             return res;
         }
         catch (Exception ex)
@@ -136,7 +145,9 @@ public class AuthFunctions
         }
     }
 
-    // POST /api/auth/login
+    // =========================================================================
+    // 2. INICIO DE SESIÓN (POST /api/auth/login) - CORREGIDO
+    // =========================================================================
     [Function("Login")]
     public async Task<HttpResponseData> Login([HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "auth/login")] HttpRequestData req)
     {
@@ -150,36 +161,52 @@ public class AuthFunctions
         await conn.OpenAsync();
 
         var query = @"
-            SELECT u.UserId, u.PasswordHash, u.FullName, hm.HouseholdId, h.Name AS HouseholdName, hm.Role
+            SELECT u.UserId, u.PasswordHash, u.FullName, hm.HouseholdId, h.Name AS HouseholdName, ISNULL(hm.Role, 'MEMBER') AS Role
             FROM BnkUsers u
             LEFT JOIN BnkHouseholdMembers hm ON u.UserId = hm.UserId
             LEFT JOIN BnkHouseholds h ON hm.HouseholdId = h.HouseholdId
             WHERE u.Email = @Email";
 
-        using var cmd = new SqlCommand(query, conn);
-        cmd.Parameters.AddWithValue("@Email", dto.Email.ToLower().Trim());
-        using var reader = await cmd.ExecuteReaderAsync();
+        int userId = 0;
+        string storedHash = string.Empty;
+        string fullName = string.Empty;
+        int? householdId = null;
+        string? householdName = null;
+        string role = "MEMBER";
+        bool userFound = false;
 
-        if (await reader.ReadAsync())
+        // 2.1 Leer datos del usuario y CERRAR el DataReader de inmediato
+        using (var cmd = new SqlCommand(query, conn))
         {
-            var userId = reader.GetInt32(0);
-            var storedHash = reader.GetString(1);
-            var fullName = reader.GetString(2);
-            int? householdId = reader.IsDBNull(3) ? null : reader.GetInt32(3);
-            string? householdName = reader.IsDBNull(4) ? null : reader.GetString(4);
-            string role = reader.IsDBNull(5) ? "MEMBER" : reader.GetString(5);
-
-            if (AuthHelper.VerifyPassword(dto.Password, storedHash))
+            cmd.Parameters.AddWithValue("@Email", dto.Email.ToLower().Trim());
+            using (var reader = await cmd.ExecuteReaderAsync())
             {
-                var token = await AuthHelper.CreateSessionTokenAsync(conn, null, userId);
-                var res = req.CreateResponse(HttpStatusCode.OK);
-                await res.WriteAsJsonAsync(new { 
-                    token, 
-                    user = new { userId, fullName, email = dto.Email }, 
-                    household = new { householdId, name = householdName, role } 
-                });
-                return res;
-            }
+                if (await reader.ReadAsync())
+                {
+                    userFound = true;
+                    userId = reader.GetInt32(0);
+                    storedHash = reader.GetString(1);
+                    fullName = reader.GetString(2);
+                    householdId = reader.IsDBNull(3) ? null : reader.GetInt32(3);
+                    householdName = reader.IsDBNull(4) ? null : reader.GetString(4);
+                    role = reader.GetString(5);
+                }
+            } // 👈 El DataReader se cierra y libera la conexión AQUÍ
+        }
+
+        // 2.2 Verificar contraseña con la conexión ya libre
+        if (userFound && AuthHelper.VerifyPassword(dto.Password, storedHash))
+        {
+            // Ahora CreateSessionTokenAsync puede ejecutar su INSERT sin bloqueos
+            var token = await AuthHelper.CreateSessionTokenAsync(conn, null, userId);
+
+            var res = req.CreateResponse(HttpStatusCode.OK);
+            await res.WriteAsJsonAsync(new { 
+                token, 
+                user = new { userId, fullName, email = dto.Email }, 
+                household = new { householdId, name = householdName, role } 
+            });
+            return res;
         }
 
         var unauth = req.CreateResponse(HttpStatusCode.Unauthorized);
