@@ -10,7 +10,20 @@ namespace FinanceApp;
 
 public static class AuthHelper
 {
-    private static readonly string JwtSecret = Environment.GetEnvironmentVariable("JWT_SECRET") ?? "ClaveSuperSecretaDeDesarrollo_Minimo32Caracteres12345!";
+    // Clave fija garantizada de al menos 256 bits (32 caracteres)
+    private const string DefaultSecret = ".Ge?5%OS7N:u+V(5,m#1[6Jelq1P~([6k:/t0}V-#=hncESm8lB~Gl5uZo4Dg,,3";
+
+ // Método centralizado para obtener siempre la misma clave y el mismo KeyId
+    private static SymmetricSecurityKey GetSecurityKey()
+    {
+        var envSecret = Environment.GetEnvironmentVariable("JwtSecret");
+        var secret = (!string.IsNullOrWhiteSpace(envSecret) && envSecret.Length >= 32) ? envSecret : DefaultSecret;
+
+        return new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secret))
+        {
+            KeyId = "finanzas-jwt-key-v1" // Identificador explícito de clave
+        };
+    }
 
     // 1. Hash seguro de contraseña
     public static string HashPassword(string password)
@@ -25,7 +38,7 @@ public static class AuthHelper
         );
         return $"{Convert.ToBase64String(salt)}:{Convert.ToBase64String(hash)}";
     }
-
+    // 2. Verificar contraseña
     // 2. Verificar contraseña
     public static bool VerifyPassword(string password, string storedHash)
     {
@@ -46,11 +59,11 @@ public static class AuthHelper
         return CryptographicOperations.FixedTimeEquals(originalHash, newHash);
     }
 
-    // 3. Generar JWT Token
+ // 3. Generar JWT Token (Firmado con GetSecurityKey)
     public static string GenerateJwtToken(int userId, string email, string fullName, int? householdId, string? householdName, string role)
     {
         var tokenHandler = new JwtSecurityTokenHandler();
-        var key = Encoding.UTF8.GetBytes(JwtSecret);
+        var key = GetSecurityKey();
 
         var claims = new List<Claim>
         {
@@ -70,19 +83,18 @@ public static class AuthHelper
         {
             Subject = new ClaimsIdentity(claims),
             Expires = DateTime.UtcNow.AddDays(30),
-            SigningCredentials = new SigningCredentials(new SymmetricSecurityKey(key), SecurityAlgorithms.HmacSha256Signature)
+            SigningCredentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256)
         };
 
         var token = tokenHandler.CreateToken(tokenDescriptor);
         return tokenHandler.WriteToken(token);
     }
 
-    // 4. Validar Token y devolver motivo en caso de error
+      // 4. Validar Token (Validado con el mismo GetSecurityKey)
     public static (AuthenticatedUser? User, string? Error) ValidateToken(HttpRequestData req)
     {
         string? token = null;
 
-        // Intentar leer de Authorization
         if (req.Headers.TryGetValues("Authorization", out var authHeaders))
         {
             var header = authHeaders.FirstOrDefault();
@@ -92,7 +104,6 @@ public static class AuthHelper
             }
         }
 
-        // Intentar leer de x-access-token
         if (string.IsNullOrEmpty(token) && req.Headers.TryGetValues("x-access-token", out var customHeaders))
         {
             token = customHeaders.FirstOrDefault()?.Trim();
@@ -104,21 +115,20 @@ public static class AuthHelper
         }
 
         var tokenHandler = new JwtSecurityTokenHandler();
-        var key = Encoding.UTF8.GetBytes(JwtSecret);
+        var key = GetSecurityKey();
 
         try
         {
             var principal = tokenHandler.ValidateToken(token, new TokenValidationParameters
             {
                 ValidateIssuerSigningKey = true,
-                IssuerSigningKey = new SymmetricSecurityKey(key),
+                IssuerSigningKey = key,
                 ValidateIssuer = false,
                 ValidateAudience = false,
                 ValidateLifetime = true,
-                ClockSkew = TimeSpan.FromMinutes(5) // 👈 Tolerancia de 5 min para evitar fallos por milisegundos
+                ClockSkew = TimeSpan.FromMinutes(5)
             }, out var validatedToken);
 
-            // Leer los claims de forma segura desde el JWT validado
             if (validatedToken is JwtSecurityToken jwtToken)
             {
                 var userIdClaim = jwtToken.Claims.FirstOrDefault(c => c.Type == "userId" || c.Type == "nameid")?.Value;
@@ -144,4 +154,5 @@ public static class AuthHelper
             return (null, $"Fallo de validación JWT: {ex.Message}");
         }
     }
+
 }
