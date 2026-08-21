@@ -9,9 +9,17 @@ namespace FinanceApp;
 
 public static class AuthHelper
 {
-    private static readonly string ConnectionString = Environment.GetEnvironmentVariable("SQL_CONNECTION_STRING") ?? string.Empty;
+    public static string GetConnectionString()
+    {
+        var connStr = Environment.GetEnvironmentVariable("SQL_CONNECTION_STRING");
 
-    // 1. HASH Y VERIFICACIÓN DE CONTRASEÑA (PBKDF2 NATIVO)
+        if (string.IsNullOrWhiteSpace(connStr))
+        {
+            throw new InvalidOperationException("La variable 'SQL_CONNECTION_STRING' está vacía o no se encuentra.");
+        }
+        return connStr;
+    }
+
     public static string HashPassword(string password)
     {
         byte[] salt = RandomNumberGenerator.GetBytes(16);
@@ -44,10 +52,8 @@ public static class AuthHelper
         return CryptographicOperations.FixedTimeEquals(originalHash, newHash);
     }
 
-    // 2. CREAR TOKEN DE SESIÓN EN BASE DE DATOS
     public static async Task<string> CreateSessionTokenAsync(SqlConnection conn, SqlTransaction? tx, int userId)
     {
-        // Genera un token aleatorio seguro de 64 caracteres hexadecimales
         byte[] randomBytes = RandomNumberGenerator.GetBytes(32);
         string token = Convert.ToHexString(randomBytes).ToLower();
 
@@ -57,37 +63,35 @@ public static class AuthHelper
 
         using var cmd = new SqlCommand(sql, conn, tx);
         cmd.Parameters.Add("@UserId", SqlDbType.Int).Value = userId;
-        cmd.Parameters.Add("@Token", SqlDbType.NVarChar).Value = token;
+        cmd.Parameters.Add("@Token", SqlDbType.NVarChar, 128).Value = token;
 
         await cmd.ExecuteNonQueryAsync();
         return token;
     }
 
-    // 3. VALIDAR TOKEN EN BASE DE DATOS (100% PRECISO Y DIRECTO)
+    // VALIDACIÓN LIMPIA POR UN SOLO HEADER
     public static async Task<(AuthenticatedUser? User, string? Error)> ValidateTokenAsync(HttpRequestData req)
     {
         string? token = null;
 
-        // Leer de Authorization: Bearer <token>
-        if (req.Headers.TryGetValues("Authorization", out var authHeaders))
+        // Leer ÚNICAMENTE de x-access-token (en minúsculas o mayúsculas)
+        foreach (var header in req.Headers)
         {
-            var h = authHeaders.FirstOrDefault();
-            if (!string.IsNullOrEmpty(h) && h.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
-                token = h.Substring("Bearer ".Length).Trim();
+            if (header.Key.Equals("x-access-token", StringComparison.OrdinalIgnoreCase))
+            {
+                token = header.Value.FirstOrDefault()?.Trim('"', '\'', ' ', '\t', '\r', '\n');
+                break;
+            }
         }
 
-        // Leer de x-access-token
-        if (string.IsNullOrEmpty(token) && req.Headers.TryGetValues("x-access-token", out var customHeaders))
+        if (string.IsNullOrWhiteSpace(token))
         {
-            token = customHeaders.FirstOrDefault()?.Trim();
+            return (null, "No se proporcionó la cabecera 'x-access-token'.");
         }
-
-        if (string.IsNullOrEmpty(token))
-            return (null, "No se proporcionó token en las cabeceras.");
 
         try
         {
-            using var conn = new SqlConnection(ConnectionString);
+            using var conn = new SqlConnection(GetConnectionString());
             await conn.OpenAsync();
 
             var sql = @"
@@ -99,7 +103,7 @@ public static class AuthHelper
                 WHERE t.Token = @Token AND t.ExpiresAt > SYSUTCDATETIME() AND t.IsRevoked = 0";
 
             using var cmd = new SqlCommand(sql, conn);
-            cmd.Parameters.Add("@Token", SqlDbType.NVarChar).Value = token;
+            cmd.Parameters.Add("@Token", SqlDbType.NVarChar, 128).Value = token;
 
             using var reader = await cmd.ExecuteReaderAsync();
             if (await reader.ReadAsync())
@@ -114,11 +118,11 @@ public static class AuthHelper
                 return (new AuthenticatedUser(userId, email, fullName, householdId, householdName, role), null);
             }
 
-            return (null, "Token de sesión inválido, revocado o expirado.");
+            return (null, "Token de sesión no encontrado en BD o expirado.");
         }
         catch (Exception ex)
         {
-            return (null, $"Error al verificar sesión en BD: {ex.Message}");
+            return (null, $"Error en Azure SQL: {ex.Message}");
         }
     }
 }
