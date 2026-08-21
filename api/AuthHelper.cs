@@ -16,7 +16,7 @@ public static class AuthHelper
  // Método centralizado para obtener siempre la misma clave y el mismo KeyId
     private static SymmetricSecurityKey GetSecurityKey()
     {
-        var envSecret = Environment.GetEnvironmentVariable("JwtSecret");
+        var envSecret = Environment.GetEnvironmentVariable("JWT_SECRET");
         var secret = (!string.IsNullOrWhiteSpace(envSecret) && envSecret.Length >= 32) ? envSecret : DefaultSecret;
 
         return new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secret))
