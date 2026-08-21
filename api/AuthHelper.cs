@@ -77,20 +77,35 @@ public static class AuthHelper
         return tokenHandler.WriteToken(token);
     }
 
-    // 4. Validar Token en cada petición HTTP (CORREGIDO)
+    // 4. VALIDAR TOKEN EN CADA PETICIÓN HTTP (SOPORTE DUAL DE HEADERS)
     public static AuthenticatedUser? ValidateToken(HttpRequestData req)
     {
-        if (!req.Headers.TryGetValues("Authorization", out var authHeaders))
-            return null;
+        string? token = null;
 
-        var header = authHeaders.FirstOrDefault();
-        if (string.IsNullOrEmpty(header) || !header.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
-            return null;
+        // 1. Intentar leer de la cabecera estándar Authorization
+        if (req.Headers.TryGetValues("Authorization", out var authHeaders))
+        {
+            var header = authHeaders.FirstOrDefault();
+            if (!string.IsNullOrEmpty(header) && header.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+            {
+                token = header.Substring("Bearer ".Length).Trim();
+            }
+        }
 
-        var token = header.Substring("Bearer ".Length).Trim();
+        // 2. Si Azure filtró Authorization, leer de x-access-token
+        if (string.IsNullOrEmpty(token) && req.Headers.TryGetValues("x-access-token", out var customHeaders))
+        {
+            token = customHeaders.FirstOrDefault()?.Trim();
+        }
+
+        // Si no vino en ninguna cabecera, rechazar
+        if (string.IsNullOrEmpty(token))
+        {
+            Console.WriteLine("[AUTH] No se encontró token en Authorization ni en x-access-token");
+            return null;
+        }
+
         var tokenHandler = new JwtSecurityTokenHandler();
-        
-        // 👈 ESTA LÍNEA ES CLAVE: Evita que .NET altere los nombres de los claims
         tokenHandler.InboundClaimTypeMap.Clear();
 
         var key = Encoding.UTF8.GetBytes(JwtSecret);
@@ -122,7 +137,7 @@ public static class AuthHelper
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[AUTH ERROR] Falló validación de token: {ex.Message}");
+            Console.WriteLine($"[AUTH ERROR] Falló validación de firma: {ex.Message}");
             return null;
         }
     }
