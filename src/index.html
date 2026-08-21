@@ -1,30 +1,109 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="#090b12">
-  <title>Arcadia · Biblioteca de juegos</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/styles.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Arcadia Hub · Centro de Aplicaciones</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <style>
+    :root {
+      --bg: #07090e;
+      --card-bg: rgba(17, 24, 39, 0.7);
+      --border: rgba(255, 255, 255, 0.08);
+      --text: #f3f4f6;
+      --muted: #9ca3af;
+      --violet: #8b5cf6;
+      --cyan: #06b6d4;
+      --emerald: #10b981;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Plus Jakarta Sans', sans-serif; }
+    body {
+      background: radial-gradient(circle at 50% -20%, #1e1b4b 0%, var(--bg) 65%);
+      color: var(--text); min-height: 100vh; display: flex; flex-direction: column; justify-content: space-between; padding: 30px 20px;
+    }
+    .container { max-width: 1100px; margin: auto; width: 100%; }
+    header { text-align: center; margin-bottom: 50px; }
+    .brand { font-family: 'Space Grotesk', sans-serif; font-size: 2.8rem; font-weight: 700; letter-spacing: -1px; display: inline-flex; align-items: center; gap: 12px; }
+    .brand span { background: linear-gradient(135deg, #a78bfa, #38bdf8); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+    .subtitle { color: var(--muted); font-size: 1.05rem; margin-top: 8px; }
+    
+    .hub-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(310px, 1fr)); gap: 24px; }
+    .hub-card {
+      background: var(--card-bg); border: 1px solid var(--border); border-radius: 20px; padding: 32px 26px;
+      backdrop-filter: blur(14px); text-decoration: none; color: inherit; display: flex; flex-direction: column;
+      justify-content: space-between; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); position: relative; overflow: hidden;
+    }
+    .hub-card::before {
+      content: ''; position: absolute; inset: 0; opacity: 0; transition: opacity 0.3s ease;
+      background: radial-gradient(800px circle at var(--mouse-x, 50%) var(--mouse-y, 50%), rgba(255, 255, 255, 0.06), transparent 40%);
+    }
+    .hub-card:hover { transform: translateY(-6px); border-color: rgba(255, 255, 255, 0.25); box-shadow: 0 20px 40px rgba(0,0,0,0.5); }
+    .hub-card.gaming:hover { border-color: var(--violet); box-shadow: 0 15px 35px rgba(139, 92, 246, 0.2); }
+    .hub-card.finance:hover { border-color: var(--emerald); box-shadow: 0 15px 35px rgba(16, 185, 129, 0.2); }
+    .hub-card.ai:hover { border-color: var(--cyan); box-shadow: 0 15px 35px rgba(6, 182, 212, 0.2); }
+
+    .card-icon {
+      width: 58px; height: 58px; border-radius: 16px; display: grid; place-items: center; font-size: 1.6rem; margin-bottom: 22px;
+    }
+    .gaming .card-icon { background: rgba(139, 92, 246, 0.15); color: #c4b5fd; border: 1px solid rgba(139, 92, 246, 0.3); }
+    .finance .card-icon { background: rgba(16, 185, 129, 0.15); color: #6ee7b7; border: 1px solid rgba(16, 185, 129, 0.3); }
+    .ai .card-icon { background: rgba(6, 182, 212, 0.15); color: #67e8f9; border: 1px solid rgba(6, 182, 212, 0.3); }
+
+    .hub-card h2 { font-size: 1.45rem; font-weight: 700; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; }
+    .hub-card p { color: var(--muted); font-size: 0.92rem; line-height: 1.55; margin-bottom: 24px; }
+    .card-footer { display: flex; align-items: center; font-size: 0.85rem; font-weight: 600; gap: 8px; color: var(--text); }
+    .hub-card:hover .card-footer i { transform: translateX(5px); }
+    .card-footer i { transition: transform 0.2s ease; }
+
+    footer { text-align: center; color: var(--muted); font-size: 0.85rem; margin-top: 50px; }
+    .badge { font-size: 0.7rem; padding: 4px 8px; border-radius: 6px; background: rgba(255,255,255,0.06); border: 1px solid var(--border); }
+  </style>
 </head>
 <body>
-  <div class="app-shell">
-    <aside class="sidebar">
-      <a class="brand" href="/"><span class="brand-mark">✦</span><span>arcadia</span></a>
-      <nav class="nav" aria-label="Navegación"><a class="nav-link active" href="#library"><span>⌘</span> Biblioteca</a><a class="nav-link" href="#collection"><span>▣</span> Mi colección</a><a class="nav-link" href="#series"><span>◈</span> Series</a><a class="nav-link" href="#achievements"><span>✧</span> Logros</a></nav>
-      <div class="sidebar-bottom"><a class="nav-link" href="/consultor.html"><span>✦</span> Consultor IA</a><div class="sync-card"><span class="pulse"></span><div><strong>Base conectada</strong><small>Azure SQL · online</small></div></div></div>
-    </aside>
-    <main class="main-content" id="library">
-      <header class="topbar"><div class="breadcrumbs"><span>Mi espacio</span><b>/</b><strong>Biblioteca</strong></div><div class="top-actions"><button class="icon-button" id="focusSearch">⌕</button><button class="avatar">WC</button></div></header>
-      <section class="hero"><div><p class="eyebrow">TU UNIVERSO DE JUEGOS</p><h1>Tu biblioteca,<br><em>a tu manera.</em></h1><p class="hero-copy">Organiza tus juegos, sigue tus series y conquista cada logro desde un solo lugar.</p></div><div class="hero-orbit"><div class="orbit orbit-one"></div><div class="orbit orbit-two"></div><div class="orbit-core">✦</div></div></section>
-      <section class="stats-grid"><article class="stat-card accent"><span class="stat-label">JUEGOS</span><strong id="statGames">—</strong><small>en tu biblioteca</small><span class="stat-icon">◉</span></article><article class="stat-card"><span class="stat-label">EN COLECCIÓN</span><strong id="statOwned">—</strong><small>copias registradas</small><span class="stat-icon">▣</span></article><article class="stat-card"><span class="stat-label">SERIES</span><strong id="statSeries">—</strong><small>por explorar</small><span class="stat-icon">◈</span></article><article class="stat-card"><span class="stat-label">LOGROS</span><strong id="statAchievements">—</strong><small><span id="statUnlocked">—</span> desbloqueados</small><span class="stat-icon">✧</span></article></section>
-      <section class="toolbar-section"><div class="section-heading"><div><p class="eyebrow">EXPLORAR</p><h2>Todos tus juegos</h2></div><button class="primary-button" id="openAdd">＋ Añadir juego</button></div><div class="toolbar"><label class="search-box"><span>⌕</span><input id="search" placeholder="Buscar en tu biblioteca…"></label><div class="filter-pills" id="filters"><button class="filter active" data-status="">Todos</button><button class="filter" data-status="Jugando">Jugando</button><button class="filter" data-status="Por jugar">Por jugar</button><button class="filter" data-status="Completado">Completados</button></div><select class="sort-select"><option>Más recientes</option><option>Nombre A-Z</option></select></div></section>
-      <section class="game-grid" id="gameGrid"><div class="loading"><span class="spinner"></span> Cargando biblioteca…</div></section><p class="empty hidden" id="empty">No encontramos juegos con esos filtros.</p>
-      <section class="series-view hidden" id="seriesView"><div class="section-heading"><div><p class="eyebrow">COLECCIONES</p><h2>Tus series</h2></div></div><div class="series-grid" id="seriesGrid"></div></section><section class="collection-view hidden" id="collectionView"><div class="section-heading"><div><p class="eyebrow">PROPIEDAD</p><h2>Mi colección</h2><p class="view-copy">Tus copias registradas por plataforma y tienda.</p></div></div><div class="collection-toolbar"><label class="search-box"><span>⌕</span><input id="collectionSearch" placeholder="Buscar en mi colección…"></label><span class="collection-count" id="collectionCount"></span></div><div class="collection-grid" id="collectionGrid"></div></section><section class="achievements-view hidden" id="achievementsView"><div class="section-heading"><div><p class="eyebrow">PROGRESO</p><h2>Todos tus logros</h2><p class="view-copy">Gestiona tus logros por juego, plataforma y tienda.</p></div></div><div class="achievement-toolbar"><label class="search-box"><span>⌕</span><input id="achievementSearch" placeholder="Buscar juego o logro…"></label><select id="achievementGameFilter"><option value="">Todos los juegos</option></select><select id="achievementPlatformFilter"><option value="">Todas las plataformas</option></select><select id="achievementStoreFilter"><option value="">Todas las tiendas</option></select><select id="achievementStatusFilter"><option value="">Todos los estados</option><option value="false">Pendientes</option><option value="true">Desbloqueados</option></select></div><div class="achievement-summary" id="achievementSummary"></div><div class="achievement-global-list" id="achievementGlobalList"></div></section>
+  <div class="container">
+    <header>
+      <div class="brand"><i class="fa-solid fa-shapes"></i> <span>Arcadia Hub</span></div>
+      <p class="subtitle">Selecciona el módulo al que deseas acceder</p>
+    </header>
+
+    <main class="hub-grid">
+      <!-- Tarjeta Biblioteca de Juegos -->
+      <a href="/bibliotecaJuego.html" class="hub-card gaming">
+        <div>
+          <div class="card-icon"><i class="fa-solid fa-gamepad"></i></div>
+          <h2>Biblioteca de Juegos <span class="badge">Azure SQL</span></h2>
+          <p>Organiza tu colección gamer, sincroniza con IGDB, haz seguimiento de series y controla el 100% de tus logros y trofeos.</p>
+        </div>
+        <div class="card-footer"><span>Explorar videojuegos</span> <i class="fa-solid fa-arrow-right"></i></div>
+      </a>
+
+      <!-- Tarjeta Gastos y Finanzas -->
+      <a href="/gastos.html" class="hub-card finance">
+        <div>
+          <div class="card-icon"><i class="fa-solid fa-wallet"></i></div>
+          <h2>Control Financiero <span class="badge">Hogar & Personal</span></h2>
+          <p>Monitorea tu flujo de caja, saldos líquidos, deudas de tarjeta de crédito y distribuye gastos compartidos del hogar.</p>
+        </div>
+        <div class="card-footer"><span>Gestionar finanzas</span> <i class="fa-solid fa-arrow-right"></i></div>
+      </a>
+
+      <!-- Tarjeta Consultor IA -->
+      <a href="/consultor.html" class="hub-card ai">
+        <div>
+          <div class="card-icon"><i class="fa-solid fa-wand-magic-sparkles"></i></div>
+          <h2>Consultor IA <span class="badge">Groq & Cosmos</span></h2>
+          <p>Asistente inteligente con prompts personalizados para resolver dudas de builds, guías de juegos o consultas generales.</p>
+        </div>
+        <div class="card-footer"><span>Iniciar chat</span> <i class="fa-solid fa-arrow-right"></i></div>
+      </a>
     </main>
   </div>
-  <dialog class="modal" id="gameModal"><form method="dialog" id="gameForm"><button class="modal-close" value="cancel">×</button><p class="eyebrow">NUEVA ENTRADA</p><h2>Añadir juego</h2><p class="modal-copy">Busca el título en IGDB o crea una ficha manual.</p><div class="igdb-search"><input id="igdbQuery" placeholder="Buscar en IGDB…"><button type="button" class="secondary-button" id="igdbSearchButton">Buscar</button></div><div id="igdbResults" class="igdb-results"></div><div class="manual-divider"><span>o añade manualmente</span></div><label>Nombre del juego<input name="name" required placeholder="Ej. Hades"></label><label>IGDB ID <span class="muted">(opcional)</span><input name="igdbId" type="number"></label><label>Portada URL <span class="muted">(opcional)</span><input name="coverUrl" type="url"></label><label>Estado<select name="status"><option>Nuevo</option><option>Por jugar</option><option>Jugando</option><option>Completado</option><option>Pausado</option></select></label><div class="modal-actions"><button class="secondary-button" value="cancel">Cancelar</button><button class="primary-button" value="default">Guardar juego</button></div><p class="form-error" id="formError"></p></form></dialog>
-  <dialog class="modal detail-modal" id="detailModal"><div id="detailContent"></div></dialog>
-  <dialog class="modal" id="collectionModal"><form method="dialog" id="collectionForm"><button class="modal-close" value="cancel">×</button><p class="eyebrow">MI COLECCIÓN</p><h2>Añadir copia</h2><label>Plataforma<select name="platformId" id="platformOptions" required></select></label><label>Tienda<select name="storeId" id="storeOptions" required></select></label><label>Edición<input name="edition" value="Base"></label><label>Formato<select name="format"><option>Digital</option><option>Físico</option></select></label><div class="modal-actions"><button class="secondary-button" value="cancel">Cancelar</button><button class="primary-button" value="default">Guardar copia</button></div><p class="form-error" id="collectionError"></p></form></dialog>
-  <script src="/app.js"></script>
-</body></html>
+
+  <footer>
+    <p>Arcadia Cloud Suite · Impulsado por Azure Functions & .NET 8</p>
+  </footer>
+</body>
+</html>

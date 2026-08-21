@@ -1,0 +1,1433 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Arcadia · Biblioteca de Videojuegos</title>
+  
+  <!-- Fuentes e Iconos -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+
+  <style>
+    :root {
+      --bg: #07090e;
+      --panel: #0e121d;
+      --panel-hover: #161c2d;
+      --panel-glass: rgba(14, 18, 29, 0.85);
+      --border: rgba(255, 255, 255, 0.08);
+      --border-accent: rgba(139, 92, 246, 0.4);
+      --text: #f3f4f6;
+      --text-muted: #94a3b8;
+      
+      --accent: #8b5cf6;
+      --accent-hover: #7c3aed;
+      --cyan: #06b6d4;
+      --lime: #10b981;
+      --danger: #f43f5e;
+      --warning: #f59e0b;
+      
+      --radius-sm: 8px;
+      --radius-md: 14px;
+      --radius-lg: 20px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Plus Jakarta Sans', sans-serif; -webkit-tap-highlight-color: transparent; }
+    body { background: radial-gradient(circle at 85% -10%, #1e1b4b 0%, var(--bg) 60%); color: var(--text); min-height: 100vh; overflow-x: hidden; }
+
+    .app-layout { display: flex; min-height: 100vh; position: relative; }
+    
+    /* Sidebar Desktop & Mobile */
+    .sidebar {
+      width: 250px; background: rgba(9, 12, 20, 0.96); border-right: 1px solid var(--border);
+      padding: 24px 16px; display: flex; flex-direction: column; justify-content: space-between;
+      position: fixed; top: 0; bottom: 0; z-index: 50; backdrop-filter: blur(20px);
+      transition: transform 0.3s cubic-bezier(0.4,0,0.2,1);
+    }
+    .sidebar-backdrop {
+      display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7);
+      backdrop-filter: blur(4px); z-index: 45; opacity: 0; transition: opacity 0.3s ease;
+    }
+    .sidebar-backdrop.active { display: block; opacity: 1; }
+
+    .brand {
+      display: flex; align-items: center; gap: 12px; text-decoration: none; color: var(--text);
+      font-family: 'Space Grotesk', sans-serif; font-size: 1.45rem; font-weight: 700; padding: 0 8px 24px;
+      border-bottom: 1px solid var(--border); margin-bottom: 20px;
+    }
+    .brand-icon {
+      width: 36px; height: 36px; border-radius: 10px; background: linear-gradient(135deg, var(--accent), var(--cyan));
+      display: grid; place-items: center; color: white; font-size: 1.1rem; box-shadow: 0 0 20px rgba(139, 92, 246, 0.4);
+    }
+    
+    .nav-list { list-style: none; display: flex; flex-direction: column; gap: 6px; }
+    .nav-btn {
+      display: flex; align-items: center; gap: 12px; width: 100%; padding: 12px 14px; border-radius: var(--radius-sm);
+      background: transparent; border: none; color: var(--text-muted); font-size: 0.92rem; font-weight: 600;
+      cursor: pointer; transition: all 0.2s ease; text-align: left;
+    }
+    .nav-btn i { width: 20px; text-align: center; font-size: 1rem; }
+    .nav-btn:hover { background: var(--panel-hover); color: var(--text); }
+    .nav-btn.active { background: rgba(139, 92, 246, 0.15); color: #c4b5fd; border-left: 3px solid var(--accent); }
+
+    .sidebar-bottom { display: flex; flex-direction: column; gap: 10px; padding-top: 16px; border-top: 1px solid var(--border); }
+    .hub-link {
+      display: flex; align-items: center; justify-content: center; gap: 8px; padding: 10px; border-radius: var(--radius-sm);
+      background: var(--panel); border: 1px solid var(--border); color: var(--text-muted); text-decoration: none; font-size: 0.85rem; font-weight: 600;
+    }
+    .hub-link:hover { color: var(--text); border-color: var(--accent); }
+
+    /* Contenido Principal */
+    .main-wrapper { margin-left: 250px; flex: 1; padding: 30px 40px 80px; width: calc(100% - 250px); max-width: 1600px; }
+    
+    .topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 26px; gap: 16px; flex-wrap: wrap; }
+    .view-title h1 { font-family: 'Space Grotesk', sans-serif; font-size: 1.8rem; font-weight: 700; letter-spacing: -0.5px; }
+    .view-title p { color: var(--text-muted); font-size: 0.88rem; margin-top: 2px; }
+
+    /* KPIs */
+    .stats-container { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; margin-bottom: 28px; }
+    .stat-box {
+      background: var(--panel-glass); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 18px 20px;
+      backdrop-filter: blur(10px); position: relative; overflow: hidden; display: flex; flex-direction: column; justify-content: space-between;
+    }
+    .stat-box::before { content:''; position:absolute; top:0; left:0; right:0; height:2px; background: linear-gradient(90deg, var(--accent), transparent); opacity: 0.6; }
+    .stat-header { display: flex; justify-content: space-between; align-items: center; color: var(--text-muted); font-size: 0.78rem; font-weight: 700; text-transform: uppercase; }
+    .stat-value { font-family: 'Space Grotesk', sans-serif; font-size: 1.9rem; font-weight: 700; margin: 8px 0 2px; color: var(--text); }
+    .stat-sub { color: var(--text-muted); font-size: 0.78rem; }
+
+    /* Botones */
+    .btn {
+      padding: 10px 18px; border-radius: var(--radius-sm); font-size: 0.88rem; font-weight: 700; cursor: pointer;
+      display: inline-flex; align-items: center; justify-content: center; gap: 8px; border: none; transition: all 0.2s ease;
+    }
+    .btn-primary { background: linear-gradient(135deg, var(--accent), var(--accent-hover)); color: white; box-shadow: 0 4px 15px rgba(139, 92, 246, 0.35); }
+    .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(139, 92, 246, 0.45); }
+    .btn-secondary { background: var(--panel); border: 1px solid var(--border); color: var(--text); }
+    .btn-secondary:hover { background: var(--panel-hover); border-color: var(--border-accent); }
+    .btn-danger { background: rgba(244, 63, 94, 0.15); border: 1px solid rgba(244, 63, 94, 0.3); color: var(--danger); }
+    .btn-danger:hover { background: var(--danger); color: white; }
+
+    /* Toolbar de Búsqueda */
+    .toolbar {
+      display: flex; justify-content: space-between; align-items: center; gap: 14px; margin-bottom: 22px; flex-wrap: wrap;
+      background: var(--panel-glass); padding: 12px 16px; border-radius: var(--radius-md); border: 1px solid var(--border);
+    }
+    .search-input-box { display: flex; align-items: center; gap: 10px; background: rgba(0,0,0,0.4); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 9px 14px; flex: 1; min-width: 220px; }
+    .search-input-box i { color: var(--text-muted); font-size: 0.9rem; }
+    .search-input-box input { background: transparent; border: none; outline: none; color: var(--text); font-size: 0.88rem; width: 100%; }
+    
+    .filter-group { display: flex; gap: 6px; flex-wrap: wrap; }
+    .pill-btn {
+      padding: 7px 13px; border-radius: 20px; font-size: 0.78rem; font-weight: 700; background: rgba(255,255,255,0.04);
+      border: 1px solid var(--border); color: var(--text-muted); cursor: pointer; transition: all 0.2s ease;
+    }
+    .pill-btn.active, .pill-btn:hover { background: rgba(139, 92, 246, 0.2); color: #c4b5fd; border-color: var(--accent); }
+
+    /* Grid de Videojuegos */
+    .games-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 18px; }
+    .game-card {
+      background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-md); overflow: hidden;
+      cursor: pointer; transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1); display: flex; flex-direction: column;
+    }
+    .game-card:hover { transform: translateY(-6px); border-color: var(--border-accent); box-shadow: 0 12px 25px rgba(0,0,0,0.6); }
+    
+    .card-cover {
+      height: 250px; background: #131722 center/cover no-repeat; position: relative; display: flex;
+      flex-direction: column; justify-content: space-between; padding: 10px;
+    }
+    .card-cover::after {
+      content: ''; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(0,0,0,0.15) 0%, transparent 40%, rgba(7,9,14,0.95) 100%);
+    }
+    .status-badge {
+      position: relative; z-index: 2; align-self: flex-start; padding: 4px 8px; border-radius: 6px;
+      font-size: 0.68rem; font-weight: 800; text-transform: uppercase; background: rgba(0,0,0,0.8);
+      backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,0.12); color: var(--cyan);
+    }
+    .card-body { padding: 12px; display: flex; flex-direction: column; justify-content: space-between; flex: 1; }
+    .card-body h3 { font-family: 'Space Grotesk', sans-serif; font-size: 0.95rem; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 6px; }
+    .card-meta-row { display: flex; justify-content: space-between; font-size: 0.74rem; color: var(--text-muted); margin-bottom: 8px; }
+    
+    .progress-bar-bg { width: 100%; height: 4px; background: rgba(255,255,255,0.08); border-radius: 4px; overflow: hidden; }
+    .progress-bar-fill { height: 100%; background: linear-gradient(90deg, var(--accent), var(--cyan)); border-radius: 4px; }
+
+    /* Vistas */
+    .view-section { display: none; }
+    .view-section.active { display: block; animation: fadeIn 0.25s ease; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+
+    .series-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; }
+    .series-card {
+      background: var(--panel-glass); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 18px;
+      cursor: pointer; transition: all 0.25s ease; backdrop-filter: blur(10px);
+    }
+    .series-card:hover { transform: translateY(-4px); border-color: var(--accent); }
+    .series-card h3 { font-family: 'Space Grotesk', sans-serif; font-size: 1.15rem; margin: 10px 0 6px; }
+
+    .collection-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
+    .copy-card { display: flex; background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-md); overflow: hidden; }
+    .copy-cover { width: 88px; background: #131722 center/cover no-repeat; flex-shrink: 0; }
+    .copy-info { padding: 12px; flex: 1; display: flex; flex-direction: column; justify-content: space-between; }
+
+    /* Modales */
+    dialog.modal {
+      border: 1px solid var(--border); border-radius: var(--radius-lg); background: #0c101a; color: var(--text);
+      padding: 0; max-width: 850px; width: 94vw; box-shadow: 0 25px 60px rgba(0,0,0,0.85); backdrop-filter: blur(20px);
+      position: fixed; inset: 0; margin: auto;
+    }
+    dialog.modal::backdrop { background: rgba(2, 4, 8, 0.85); backdrop-filter: blur(10px); }
+    .modal-body { padding: 24px; max-height: 88vh; overflow-y: auto; }
+    .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; }
+    .modal-close { background: none; border: none; color: var(--text-muted); font-size: 1.4rem; cursor: pointer; }
+    .modal-close:hover { color: var(--danger); }
+
+    /* Detalle de Juego */
+    .detail-hero {
+      height: 220px; background-size: cover; background-position: center; border-radius: var(--radius-md);
+      position: relative; margin-bottom: 20px; display: flex; align-items: flex-end; padding: 18px;
+    }
+    .detail-hero::after {
+      content: ''; position: absolute; inset: 0; border-radius: var(--radius-md);
+      background: linear-gradient(0deg, #0c101a 10%, rgba(12, 16, 26, 0.4) 60%, transparent 100%);
+    }
+    .detail-hero-content { position: relative; z-index: 2; width: 100%; display: flex; justify-content: space-between; align-items: flex-end; }
+    .detail-pills { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+    .chip { padding: 3px 8px; border-radius: 20px; font-size: 0.72rem; background: rgba(255,255,255,0.06); border: 1px solid var(--border); color: var(--text-muted); display: inline-flex; align-items: center; gap: 4px; }
+
+    .detail-sections { display: grid; gap: 18px; margin-top: 20px; }
+    .section-box { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 18px; }
+    .section-box h3 { font-size: 0.95rem; margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between; color: #c4b5fd; }
+
+    .series-banner-card {
+      background: linear-gradient(135deg, rgba(139, 92, 246, 0.15), rgba(6, 182, 212, 0.08));
+      border: 1px solid var(--border-accent); border-radius: var(--radius-md); padding: 14px 18px;
+      display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; gap: 12px; flex-wrap: wrap;
+    }
+
+    .gallery-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 8px; }
+    .gallery-row img { width: 100%; height: 75px; object-fit: cover; border-radius: 6px; cursor: pointer; transition: transform 0.2s ease; }
+    .gallery-row img:hover { transform: scale(1.05); }
+
+    /* Formularios */
+    .form-group { margin-bottom: 12px; }
+    label { display: block; font-size: 0.75rem; font-weight: 700; color: var(--text-muted); margin-bottom: 5px; text-transform: uppercase; }
+    input, select, textarea {
+      width: 100%; padding: 10px 12px; border-radius: var(--radius-sm); background: #06080d;
+      border: 1px solid var(--border); color: var(--text); font-size: 0.88rem; outline: none;
+    }
+    input:focus, select:focus, textarea:focus { border-color: var(--accent); }
+
+    /* ================= OVERLAY DE CARGA / IMPORTACIÓN ================= */
+    #loadingOverlay {
+      position: fixed; inset: 0; background: rgba(5, 7, 12, 0.88); backdrop-filter: blur(12px);
+      z-index: 1000; display: none; align-items: center; justify-content: center; flex-direction: column; text-align: center; padding: 20px;
+    }
+    .loading-card {
+      background: var(--panel); border: 1px solid var(--border-accent); padding: 32px 28px;
+      border-radius: var(--radius-lg); max-width: 400px; width: 100%; box-shadow: 0 20px 50px rgba(0,0,0,0.8);
+      display: flex; flex-direction: column; align-items: center; gap: 16px;
+    }
+    .loading-orb {
+      width: 64px; height: 64px; border-radius: 50%; border: 3px solid rgba(139, 92, 246, 0.2);
+      border-top-color: var(--accent); border-right-color: var(--cyan); animation: spinOrb 0.9s linear infinite;
+    }
+    @keyframes spinOrb { to { transform: rotate(360deg); } }
+    .loading-title { font-family: 'Space Grotesk'; font-size: 1.2rem; font-weight: 700; color: var(--text); }
+    .loading-msg { font-size: 0.85rem; color: var(--text-muted); line-height: 1.4; }
+
+    /* Toast */
+    #toastContainer { position: fixed; bottom: 20px; right: 20px; z-index: 1100; display: flex; flex-direction: column; gap: 8px; max-width: 90vw; }
+    .toast { background: var(--panel); border: 1px solid var(--border); padding: 12px 16px; border-radius: var(--radius-sm); color: var(--text); font-size: 0.85rem; font-weight: 600; box-shadow: 0 10px 25px rgba(0,0,0,0.5); display: flex; align-items: center; gap: 10px; }
+
+    /* ================= OPTIMIZACIÓN RESPONSIVA CELULAR ================= */
+    @media (max-width: 900px) {
+      .sidebar { transform: translateX(-100%); width: 270px; }
+      .sidebar.open { transform: translateX(0); }
+      .main-wrapper { margin-left: 0; width: 100%; padding: 18px 14px 70px; }
+      .mobile-menu-btn { display: inline-flex !important; }
+      .topbar { margin-bottom: 18px; }
+      .view-title h1 { font-size: 1.45rem; }
+      .stats-container { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+      .stat-box { padding: 14px; }
+      .stat-value { font-size: 1.5rem; }
+    }
+
+    @media (max-width: 600px) {
+      .games-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+      .card-cover { height: 190px; padding: 8px; }
+      .card-body { padding: 8px; }
+      .card-body h3 { font-size: 0.85rem; }
+      .card-meta-row { font-size: 0.68rem; margin-bottom: 4px; }
+      .modal-body { padding: 16px; }
+      .detail-hero { height: 160px; padding: 12px; }
+      .detail-hero h2 { font-size: 1.35rem !important; }
+      dialog.modal { width: 96vw; border-radius: var(--radius-md); }
+    }
+
+    .mobile-menu-btn { display: none; background: var(--panel); border: 1px solid var(--border); color: var(--text); width: 40px; height: 40px; border-radius: 8px; cursor: pointer; align-items: center; justify-content: center; }
+  </style>
+</head>
+<body>
+
+<div class="app-layout">
+  <!-- Backdrop Celular -->
+  <div class="sidebar-backdrop" id="sidebarBackdrop" onclick="toggleSidebar()"></div>
+
+  <!-- Sidebar -->
+  <aside class="sidebar" id="sidebar">
+    <div>
+      <a href="/index.html" class="brand">
+        <div class="brand-icon"><i class="fa-solid fa-gamepad"></i></div>
+        <span>Arcadia</span>
+      </a>
+
+      <ul class="nav-list">
+        <li><button class="nav-btn active" onclick="switchView('view-games', this)"><i class="fa-solid fa-layer-group"></i> Biblioteca</button></li>
+        <li><button class="nav-btn" onclick="switchView('view-collection', this)"><i class="fa-solid fa-compact-disc"></i> Mi Colección</button></li>
+        <li><button class="nav-btn" onclick="switchView('view-series', this)"><i class="fa-solid fa-cubes"></i> Sagas & Series</button></li>
+        <li><button class="nav-btn" onclick="switchView('view-achievements', this)"><i class="fa-solid fa-trophy"></i> Logros Globales</button></li>
+      </ul>
+    </div>
+
+    <div class="sidebar-bottom">
+      <a href="/gastos.html" class="hub-link"><i class="fa-solid fa-wallet"></i> Control de Gastos</a>
+      <a href="/consultor.html" class="hub-link"><i class="fa-solid fa-wand-magic-sparkles"></i> Consultor IA</a>
+      <a href="/index.html" class="hub-link"><i class="fa-solid fa-shapes"></i> Menú Principal</a>
+    </div>
+  </aside>
+
+  <!-- Contenedor Principal -->
+  <main class="main-wrapper">
+    <header class="topbar">
+      <div style="display: flex; align-items: center; gap: 12px;">
+        <button class="mobile-menu-btn" onclick="toggleSidebar()"><i class="fa-solid fa-bars"></i></button>
+        <div class="view-title">
+          <h1 id="pageTitle">Biblioteca de Videojuegos</h1>
+          <p id="pageSubtitle">Explora, sincroniza y gestiona tu catálogo personal</p>
+        </div>
+      </div>
+      <button class="btn btn-primary" onclick="openAddGameModal()"><i class="fa-solid fa-plus"></i> Añadir Juego</button>
+    </header>
+
+    <!-- KPIs -->
+    <section class="stats-container">
+      <div class="stat-box">
+        <div class="stat-header"><span>Títulos</span><i class="fa-solid fa-gamepad" style="color:var(--accent)"></i></div>
+        <div class="stat-value" id="kpiGames">—</div>
+        <div class="stat-sub">En biblioteca</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-header"><span>Copias</span><i class="fa-solid fa-box-archive" style="color:var(--cyan)"></i></div>
+        <div class="stat-value" id="kpiOwned">—</div>
+        <div class="stat-sub">Registradas</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-header"><span>Sagas</span><i class="fa-solid fa-cubes" style="color:var(--warning)"></i></div>
+        <div class="stat-value" id="kpiSeries">—</div>
+        <div class="stat-sub">Colecciones</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-header"><span>Logros</span><i class="fa-solid fa-trophy" style="color:var(--lime)"></i></div>
+        <div class="stat-value" id="kpiAchievements">—</div>
+        <div class="stat-sub" id="kpiUnlockedSub">— desbloqueados</div>
+      </div>
+    </section>
+
+    <!-- 1. VISTA: BIBLIOTECA -->
+    <section id="view-games" class="view-section active">
+      <div class="toolbar">
+        <div class="search-input-box">
+          <i class="fa-solid fa-magnifying-glass"></i>
+          <input type="text" id="gameSearch" placeholder="Buscar título en tu biblioteca...">
+        </div>
+        <div class="filter-group" id="statusFilters">
+          <button class="pill-btn active" data-status="">Todos</button>
+          <button class="pill-btn" data-status="Jugando">Jugando</button>
+          <button class="pill-btn" data-status="Por jugar">Por jugar</button>
+          <button class="pill-btn" data-status="Completado">Completados</button>
+          <button class="pill-btn" data-status="Pausado">Pausados</button>
+        </div>
+      </div>
+      <div class="games-grid" id="gamesGrid"><p style="grid-column:1/-1; text-align:center; color:var(--text-muted);">Cargando biblioteca...</p></div>
+    </section>
+
+    <!-- 2. VISTA: MI COLECCIÓN -->
+    <section id="view-collection" class="view-section">
+      <div class="toolbar">
+        <div class="search-input-box">
+          <i class="fa-solid fa-magnifying-glass"></i>
+          <input type="text" id="collectionSearch" placeholder="Buscar por título, plataforma o tienda...">
+        </div>
+        <span id="collectionTotalCount" style="font-size:0.85rem; color:var(--text-muted); font-weight:600;"></span>
+      </div>
+      <div class="collection-grid" id="collectionGrid"></div>
+    </section>
+
+    <!-- 3. VISTA: SERIES -->
+    <section id="view-series" class="view-section">
+      <div class="series-grid" id="seriesGrid"></div>
+    </section>
+
+    <!-- 4. VISTA: LOGROS GLOBALES -->
+    <section id="view-achievements" class="view-section">
+      <div class="toolbar" style="gap:10px;">
+        <div class="search-input-box" style="flex:2;">
+          <i class="fa-solid fa-magnifying-glass"></i>
+          <input type="text" id="globalAchievementSearch" placeholder="Buscar logro...">
+        </div>
+        <select id="filterGame" style="flex:1;"><option value="">Todos los juegos</option></select>
+        <select id="filterPlatform" style="flex:1;"><option value="">Todas las plataformas</option></select>
+        <select id="filterStatus" style="flex:1;">
+          <option value="">Todos los estados</option>
+          <option value="true">Desbloqueados</option>
+          <option value="false">Pendientes</option>
+        </select>
+      </div>
+      <div id="achievementsGlobalSummary" style="font-size:0.85rem; color:var(--text-muted); margin-bottom:14px; font-weight:600;"></div>
+      <div id="globalAchievementsList"></div>
+    </section>
+  </main>
+</div>
+
+<!-- ================= OVERLAY VISUAL DE PROCESAMIENTO ================= -->
+<div id="loadingOverlay">
+  <div class="loading-card">
+    <div class="loading-orb"></div>
+    <div>
+      <h3 class="loading-title" id="loadingTitle">Procesando...</h3>
+      <p class="loading-msg" id="loadingMsg">Por favor espera un momento.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ================= MODAL: AÑADIR JUEGO ================= -->
+<dialog class="modal" id="addGameModal">
+  <div class="modal-body">
+    <div class="modal-header">
+      <h2 style="font-family:'Space Grotesk'; font-size:1.35rem;"><i class="fa-solid fa-plus-circle" style="color:var(--accent)"></i> Añadir Juego</h2>
+      <button class="modal-close" onclick="document.getElementById('addGameModal').close()">&times;</button>
+    </div>
+    <div class="form-group">
+      <label>Buscar en Base de Datos de IGDB</label>
+      <div style="display:flex; gap:8px;">
+        <select id="igdbSearchType" style="width:125px;">
+          <option value="name">Por Nombre</option>
+          <option value="id">Por IGDB ID</option>
+        </select>
+        <input type="text" id="igdbQueryInput" placeholder="Ej: Cyberpunk 2077...">
+        <button class="btn btn-primary" id="btnSearchIgdb" type="button"><i class="fa-solid fa-search"></i></button>
+      </div>
+      <div id="igdbSearchResults" style="margin-top:10px; display:grid; gap:8px; max-height:220px; overflow-y:auto;"></div>
+    </div>
+    <div style="text-align:center; margin:16px 0; color:var(--text-muted); font-size:0.75rem; position:relative;">
+      <span style="background:#0c101a; padding:0 10px; position:relative; z-index:2;">O CREAR MANUALMENTE</span>
+      <div style="position:absolute; top:50%; left:0; right:0; height:1px; background:var(--border);"></div>
+    </div>
+    <form id="formManualGame">
+      <div class="form-group"><label>Nombre del Juego</label><input type="text" id="manualName" required placeholder="Ej. Hades II"></div>
+      <div class="form-group"><label>URL de Portada (Opcional)</label><input type="url" id="manualCover" placeholder="https://..."></div>
+      <div class="form-group"><label>Estado Inicial</label>
+        <select id="manualStatus">
+          <option value="Nuevo">Nuevo</option>
+          <option value="Jugando">Jugando</option>
+          <option value="Por jugar">Por jugar</option>
+          <option value="Completado">Completado</option>
+          <option value="Pausado">Pausado</option>
+        </select>
+      </div>
+      <button type="submit" class="btn btn-primary" style="width:100%;">Guardar Juego</button>
+    </form>
+  </div>
+</dialog>
+
+<!-- ================= MODAL: DETALLE DE JUEGO ================= -->
+<dialog class="modal" id="gameDetailModal" style="max-width:920px;">
+  <div class="modal-body" id="gameDetailContent">
+    <p style="text-align:center; padding:40px;"><i class="fa-solid fa-spinner fa-spin"></i> Abriendo ficha...</p>
+  </div>
+</dialog>
+
+<!-- ================= MODAL: DETALLE DE SERIE ================= -->
+<dialog class="modal" id="seriesDetailModal" style="max-width:700px;">
+  <div class="modal-body" id="seriesDetailContent">
+    <p style="text-align:center; padding:30px;"><i class="fa-solid fa-spinner fa-spin"></i> Cargando serie...</p>
+  </div>
+</dialog>
+
+<!-- ================= MODAL: REGISTRAR COPIA ================= -->
+<dialog class="modal" id="addCopyModal" style="max-width:460px;">
+  <div class="modal-body">
+    <div class="modal-header">
+      <h2 style="font-family:'Space Grotesk'; font-size:1.3rem;"><i class="fa-solid fa-compact-disc" style="color:var(--cyan)"></i> Añadir Copia</h2>
+      <button class="modal-close" onclick="document.getElementById('addCopyModal').close()">&times;</button>
+    </div>
+    <form id="formAddCopy">
+      <input type="hidden" id="copyGameId">
+      <div class="form-group">
+        <label>Plataforma</label>
+        <select id="copyPlatformSelect" required><option value="">Cargando plataformas...</option></select>
+      </div>
+      <div class="form-group">
+        <label>Tienda / Servicio</label>
+        <select id="copyStoreSelect" required><option value="">Cargando tiendas...</option></select>
+      </div>
+      <div class="form-group">
+        <label>Edición</label>
+        <input type="text" id="copyEdition" value="Standard / Base" required>
+      </div>
+      <div class="form-group">
+        <label>Formato</label>
+        <select id="copyFormat">
+          <option value="Digital">Digital</option>
+          <option value="Físico">Físico</option>
+        </select>
+      </div>
+      <button type="submit" class="btn btn-primary" style="width:100%;">Guardar Copia</button>
+    </form>
+  </div>
+</dialog>
+
+<div id="toastContainer"></div>
+
+<!-- ================= MOTOR JAVASCRIPT ================= -->
+<script>
+  const API = '/api';
+  let appState = {
+    games: [],
+    statusFilter: '',
+    searchQuery: '',
+    platforms: [],
+    stores: [],
+    currentGame: null
+  };
+
+  document.addEventListener('DOMContentLoaded', async () => {
+    await loadCatalogOptions();
+    loadStats();
+    loadGames();
+    setupEvents();
+  });
+
+  function setupEvents() {
+    document.getElementById('gameSearch').addEventListener('input', debounce((e) => {
+      appState.searchQuery = e.target.value.trim();
+      loadGames();
+    }, 300));
+
+    document.getElementById('statusFilters').addEventListener('click', (e) => {
+      const btn = e.target.closest('button');
+      if (!btn) return;
+      document.querySelectorAll('#statusFilters .pill-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      appState.statusFilter = btn.dataset.status;
+      loadGames();
+    });
+
+    document.getElementById('btnSearchIgdb').addEventListener('click', searchIgdb);
+    document.getElementById('igdbQueryInput').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); searchIgdb(); }
+    });
+
+    document.getElementById('formManualGame').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      try {
+        await apiFetch('/library/games', {
+          method: 'POST',
+          body: JSON.stringify({
+            name: document.getElementById('manualName').value.trim(),
+            coverUrl: document.getElementById('manualCover').value.trim() || null,
+            status: document.getElementById('manualStatus').value,
+            notes: null
+          })
+        });
+        showToast('Juego creado exitosamente');
+        document.getElementById('addGameModal').close();
+        document.getElementById('formManualGame').reset();
+        loadStats();
+        loadGames();
+      } catch (err) {
+        showToast(err.message, 'error');
+      }
+    });
+
+    document.getElementById('formAddCopy').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const gameId = document.getElementById('copyGameId').value;
+      try {
+        await apiFetch(`/library/games/${gameId}/collection`, {
+          method: 'POST',
+          body: JSON.stringify({
+            platformId: Number(document.getElementById('copyPlatformSelect').value),
+            storeId: Number(document.getElementById('copyStoreSelect').value),
+            edition: document.getElementById('copyEdition').value,
+            owned: true,
+            format: document.getElementById('copyFormat').value
+          })
+        });
+        showToast('Copia guardada en tu colección');
+        document.getElementById('addCopyModal').close();
+        openGameDetail(gameId);
+        loadStats();
+      } catch (err) {
+        showToast(err.message, 'error');
+      }
+    });
+
+    document.getElementById('collectionSearch')?.addEventListener('input', debounce(loadCollection, 300));
+
+    ['globalAchievementSearch', 'filterGame', 'filterPlatform', 'filterStatus'].forEach(id => {
+      document.getElementById(id)?.addEventListener('change', loadGlobalAchievements);
+      if (id === 'globalAchievementSearch') {
+        document.getElementById(id).addEventListener('input', debounce(loadGlobalAchievements, 300));
+      }
+    });
+  }
+
+  // ================= CONTROLES DEL OVERLAY DE CARGA =================
+  function showLoading(title = 'Procesando...', message = 'Por favor espera un momento.') {
+    document.getElementById('loadingTitle').textContent = title;
+    document.getElementById('loadingMsg').textContent = message;
+    document.getElementById('loadingOverlay').style.display = 'flex';
+  }
+
+  function hideLoading() {
+    document.getElementById('loadingOverlay').style.display = 'none';
+  }
+
+  async function apiFetch(endpoint, options = {}) {
+    const res = await fetch(API + endpoint, {
+      headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
+      ...options
+    });
+    if (res.status === 204) return null;
+    const data = await res.json().catch(() => null);
+    if (!res.ok) throw new Error(data?.error || `Error (${res.status})`);
+    return data;
+  }
+
+  async function loadCatalogOptions() {
+    try {
+      const [p, s] = await Promise.all([
+        apiFetch('/library/catalog/platforms'),
+        apiFetch('/library/catalog/stores')
+      ]);
+      appState.platforms = p?.items || [];
+      appState.stores = s?.items || [];
+      populateCatalogSelects();
+    } catch (e) {
+      console.error('Error cargando catálogos', e);
+    }
+  }
+
+  function populateCatalogSelects() {
+    const pSel = document.getElementById('copyPlatformSelect');
+    const sSel = document.getElementById('copyStoreSelect');
+    const fPlat = document.getElementById('filterPlatform');
+
+    if (pSel && appState.platforms.length) {
+      pSel.innerHTML = appState.platforms.map(x => `<option value="${x.id}">${escapeHtml(x.name)}</option>`).join('');
+    }
+    if (sSel && appState.stores.length) {
+      sSel.innerHTML = appState.stores.map(x => `<option value="${x.id}">${escapeHtml(x.name)}</option>`).join('');
+    }
+    if (fPlat && appState.platforms.length) {
+      fPlat.innerHTML = '<option value="">Todas las plataformas</option>' + 
+        appState.platforms.map(x => `<option value="${x.id}">${escapeHtml(x.name)}</option>`).join('');
+    }
+  }
+
+  async function loadStats() {
+    try {
+      const s = await apiFetch('/library/stats');
+      document.getElementById('kpiGames').textContent = s.games;
+      document.getElementById('kpiOwned').textContent = s.owned;
+      document.getElementById('kpiSeries').textContent = s.series;
+      document.getElementById('kpiAchievements').textContent = s.achievements;
+      document.getElementById('kpiUnlockedSub').textContent = `${s.unlocked} desbloqueados (${s.achievements ? Math.round((s.unlocked / s.achievements) * 100) : 0}%)`;
+    } catch (e) {
+      console.error(e);
+    }
+  }
+
+  async function loadGames() {
+    const grid = document.getElementById('gamesGrid');
+    grid.innerHTML = '<p style="grid-column:1/-1; text-align:center; color:var(--text-muted); padding:30px;"><i class="fa-solid fa-spinner fa-spin"></i> Cargando biblioteca...</p>';
+
+    const params = new URLSearchParams({ page: 1, pageSize: 80 });
+    if (appState.searchQuery) params.set('search', appState.searchQuery);
+    if (appState.statusFilter) params.set('status', appState.statusFilter);
+
+    try {
+      appState.games = await apiFetch('/library/games?' + params.toString()) || [];
+      renderGames();
+    } catch (err) {
+      grid.innerHTML = `<p style="grid-column:1/-1; text-align:center; color:var(--danger);">${escapeHtml(err.message)}</p>`;
+    }
+  }
+
+  function renderGames() {
+    const grid = document.getElementById('gamesGrid');
+    if (!appState.games.length) {
+      grid.innerHTML = '<p style="grid-column:1/-1; text-align:center; color:var(--text-muted); padding:40px;">No se encontraron títulos.</p>';
+      return;
+    }
+
+    grid.innerHTML = appState.games.map(g => {
+      const coverStyle = g.coverUrl ? `style="background-image:url('${escapeAttr(g.coverUrl)}');"` : '';
+      const totalAch = g.achievementTotal || 0;
+      const unlAch = g.achievementUnlocked || 0;
+      const percent = totalAch > 0 ? Math.round((unlAch / totalAch) * 100) : 0;
+
+      return `
+        <article class="game-card" onclick="openGameDetail(${g.id})">
+          <div class="card-cover" ${coverStyle}>
+            <span class="status-badge">${escapeHtml(g.status || 'Nuevo')}</span>
+          </div>
+          <div class="card-body">
+            <h3 title="${escapeAttr(g.name)}">${escapeHtml(g.name)}</h3>
+            <div class="card-meta-row">
+              <span><i class="fa-solid fa-cubes"></i> ${escapeHtml(g.seriesName || 'Sin serie')}</span>
+              <span><i class="fa-solid fa-trophy" style="color:var(--warning)"></i> ${totalAch ? `${unlAch}/${totalAch}` : '—'}</span>
+            </div>
+            <div class="progress-bar-bg">
+              <div class="progress-bar-fill" style="width:${percent}%"></div>
+            </div>
+          </div>
+        </article>
+      `;
+    }).join('');
+  }
+
+  // ================= FICHA DE DETALLE =================
+  async function openGameDetail(id) {
+    const modal = document.getElementById('gameDetailModal');
+    const content = document.getElementById('gameDetailContent');
+    content.innerHTML = '<p style="text-align:center; padding:40px;"><i class="fa-solid fa-spinner fa-spin"></i> Abriendo ficha técnica...</p>';
+    modal.showModal();
+
+    try {
+      const g = await apiFetch(`/library/games/${id}`);
+      appState.currentGame = g;
+      const heroCover = g.coverUrl ? `style="background-image:url('${escapeAttr(g.coverUrl)}');"` : '';
+      const genres = safeJsonParse(g.genres);
+      const devs = safeJsonParse(g.developers);
+      const pubs = safeJsonParse(g.publishers);
+      const franchises = safeJsonParse(g.franchises);
+      const screens = safeJsonParse(g.screenshots);
+      const copies = g.collection || [];
+      const dlcs = g.dlcs || [];
+
+      content.innerHTML = `
+        <div class="modal-header">
+          <span style="font-size:0.75rem; color:var(--cyan); font-weight:700; text-transform:uppercase;">Ficha · ID IGDB ${g.igdbId || '—'}</span>
+          <button class="modal-close" onclick="document.getElementById('gameDetailModal').close()">&times;</button>
+        </div>
+
+        <div class="detail-hero" ${heroCover}>
+          <div class="detail-hero-content">
+            <div>
+              <h2 style="font-family:'Space Grotesk'; font-size:1.8rem; font-weight:800;">${escapeHtml(g.name)}</h2>
+              <div class="detail-pills">
+                <span class="chip" style="background:var(--accent); color:white;">${escapeHtml(g.status)}</span>
+                ${g.igdbRating ? `<span class="chip"><i class="fa-solid fa-star" style="color:var(--warning)"></i> ${Number(g.igdbRating).toFixed(1)} IGDB</span>` : ''}
+                ${g.releaseDate ? `<span class="chip"><i class="fa-solid fa-calendar"></i> ${new Date(g.releaseDate).getFullYear()}</span>` : ''}
+                ${g.playTimeHours ? `<span class="chip"><i class="fa-solid fa-clock"></i> ${g.playTimeHours} hrs</span>` : ''}
+                ${g.myRating ? `<span class="chip" style="color:var(--warning)"><i class="fa-solid fa-star"></i> Nota: ${g.myRating}/5</span>` : ''}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Banner de Serie / Saga Vinculada -->
+        ${g.seriesName ? `
+          <div class="series-banner-card">
+            <div>
+              <small style="color:var(--accent); font-weight:700; font-size:0.72rem; text-transform:uppercase;">Pertenece a la Serie</small>
+              <h4 style="font-size:1.05rem; margin-top:2px;">${escapeHtml(g.seriesName)}</h4>
+            </div>
+            <button class="btn btn-secondary" style="font-size:0.8rem; padding:8px 14px;" onclick="openSeriesDetail(${g.seriesId})"><i class="fa-solid fa-cubes"></i> Ver Saga</button>
+          </div>
+        ` : ''}
+
+        <!-- Botones de Acción -->
+        <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:18px;">
+          <button class="btn btn-primary" onclick="openAddCopyModal(${g.id})"><i class="fa-solid fa-plus"></i> Añadir Copia</button>
+          <button class="btn btn-secondary" onclick="refreshIgdb(${g.id})"><i class="fa-solid fa-arrows-rotate"></i> Actualizar IGDB</button>
+          <button class="btn btn-secondary" onclick="toggleEditPanel()"><i class="fa-solid fa-pen"></i> Editar Estado / Notas</button>
+          ${g.igdbUrl ? `<a href="${escapeAttr(g.igdbUrl)}" target="_blank" class="btn btn-secondary"><i class="fa-solid fa-arrow-up-right-from-square"></i> IGDB</a>` : ''}
+        </div>
+
+        <!-- Panel Edición Rápida -->
+        <div id="quickEditPanel" style="display:none; background:rgba(0,0,0,0.5); border:1px solid var(--border); border-radius:var(--radius-md); padding:16px; margin-bottom:18px;">
+          <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(130px, 1fr)); gap:10px;">
+            <div>
+              <label>Estado</label>
+              <select id="editStatus">
+                <option ${g.status==='Nuevo'?'selected':''}>Nuevo</option>
+                <option ${g.status==='Por jugar'?'selected':''}>Por jugar</option>
+                <option ${g.status==='Jugando'?'selected':''}>Jugando</option>
+                <option ${g.status==='Pausado'?'selected':''}>Pausado</option>
+                <option ${g.status==='Completado'?'selected':''}>Completado</option>
+                <option ${g.status==='Abandonado'?'selected':''}>Abandonado</option>
+              </select>
+            </div>
+            <div>
+              <label>Mi Nota (1-5)</label>
+              <input type="number" id="editRating" min="1" max="5" value="${g.myRating || ''}" placeholder="Ej: 5">
+            </div>
+            <div>
+              <label>Horas Jugadas</label>
+              <input type="number" id="editHours" step="0.5" value="${g.playTimeHours || ''}" placeholder="0.0">
+            </div>
+          </div>
+          <div class="form-group" style="margin-top:10px;">
+            <label>Mis Notas</label>
+            <textarea id="editNotes" rows="2" placeholder="Escribe notas sobre tu partida...">${escapeHtml(g.notes || '')}</textarea>
+          </div>
+          <button class="btn btn-primary" onclick="saveQuickEdit(${g.id})">Guardar Cambios</button>
+        </div>
+
+        <div class="detail-sections">
+          <!-- Información Técnica -->
+          <div class="section-box">
+            <h3><span><i class="fa-solid fa-circle-info"></i> Información</span></h3>
+            <p style="font-size:0.88rem; color:var(--text-muted); line-height:1.55; margin-bottom:12px;">${escapeHtml(g.summary || 'Sin sinopsis disponible.')}</p>
+            
+            <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:12px; font-size:0.8rem; border-top:1px solid var(--border); padding-top:12px;">
+              <div><strong style="color:var(--text)">Géneros:</strong> <div style="color:var(--text-muted); margin-top:2px;">${genres.join(', ') || '—'}</div></div>
+              <div><strong style="color:var(--text)">Desarrolladores:</strong> <div style="color:var(--text-muted); margin-top:2px;">${devs.join(', ') || '—'}</div></div>
+              <div><strong style="color:var(--text)">Publishers:</strong> <div style="color:var(--text-muted); margin-top:2px;">${pubs.join(', ') || '—'}</div></div>
+              <div><strong style="color:var(--text)">Franquicias:</strong> <div style="color:var(--text-muted); margin-top:2px;">${franchises.join(', ') || '—'}</div></div>
+            </div>
+
+            ${g.notes ? `
+              <div style="margin-top:12px; padding:10px 12px; background:rgba(255,255,255,0.03); border-radius:8px; border-left:3px solid var(--accent);">
+                <strong style="font-size:0.78rem; color:#c4b5fd;">Mis Notas:</strong>
+                <p style="font-size:0.82rem; color:var(--text-muted); margin-top:2px;">${escapeHtml(g.notes)}</p>
+              </div>
+            ` : ''}
+          </div>
+
+          <!-- Capturas -->
+          ${screens.length ? `
+            <div class="section-box">
+              <h3><span><i class="fa-solid fa-images"></i> Capturas (${screens.length})</span></h3>
+              <div class="gallery-row">
+                ${screens.slice(0, 8).map(url => `<img src="${escapeAttr(url)}" alt="Screenshot" onclick="window.open('${escapeAttr(url)}', '_blank')">`).join('')}
+              </div>
+            </div>
+          ` : ''}
+
+          <!-- Copias -->
+          <div class="section-box">
+            <h3>
+              <span><i class="fa-solid fa-compact-disc"></i> Copias Registradas (${copies.length})</span>
+              <button class="btn btn-secondary" style="padding:4px 10px; font-size:0.75rem;" onclick="openAddCopyModal(${g.id})">+ Copia</button>
+            </h3>
+            <div style="display:grid; gap:8px;">
+              ${copies.length ? copies.map(c => `
+                <div style="display:flex; justify-content:space-between; align-items:center; background:#06080d; padding:10px 12px; border-radius:8px;">
+                  <div>
+                    <strong style="font-size:0.88rem;">${escapeHtml(c.platform)} · ${escapeHtml(c.store)}</strong>
+                    <div style="font-size:0.74rem; color:var(--text-muted);">${escapeHtml(c.edition)} · ${escapeHtml(c.format || 'Digital')}</div>
+                  </div>
+                  <button class="btn btn-danger" style="padding:4px 8px; font-size:0.75rem;" onclick="deleteCopy(${c.id}, ${g.id})"><i class="fa-solid fa-trash"></i></button>
+                </div>
+              `).join('') : '<p style="color:var(--text-muted); font-size:0.82rem;">No tienes copias registradas.</p>'}
+            </div>
+          </div>
+
+          <!-- DLCs y Asociación -->
+          ${dlcs.length ? `
+            <div class="section-box">
+              <h3><span><i class="fa-solid fa-puzzle-piece"></i> DLCs y Expansiones (${dlcs.length})</span></h3>
+              <div style="display:grid; gap:10px;">
+                ${dlcs.map(d => {
+                  const linkedCopies = d.copies || [];
+                  return `
+                    <div style="background:#06080d; padding:12px; border-radius:8px; border:1px solid var(--border);">
+                      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+                        <div>
+                          <strong style="font-size:0.88rem;">${escapeHtml(d.name)}</strong>
+                          <span class="chip" style="margin-left:4px;">${escapeHtml(d.type || 'DLC')}</span>
+                        </div>
+                        <div style="display:flex; gap:6px; align-items:center;">
+                          <select id="dlcCopySelect_${d.id}" style="padding:6px 8px; font-size:0.75rem; width:auto;">
+                            <option value="">Vincular a copia...</option>
+                            ${copies.map(c => `<option value="${c.id}">${escapeHtml(c.platform)} (${escapeHtml(c.store)})</option>`).join('')}
+                          </select>
+                          <button class="btn btn-secondary" style="padding:6px 10px; font-size:0.75rem;" onclick="linkDlcToCopy(${d.id}, ${g.id})">Asociar</button>
+                        </div>
+                      </div>
+
+                      <div style="margin-top:8px; font-size:0.75rem; color:var(--text-muted);">
+                        ${linkedCopies.length ? `
+                          <span>Copias con este DLC: </span>
+                          ${linkedCopies.map(lc => `
+                            <span class="chip" style="color:var(--lime); border-color:rgba(16,185,129,0.3); background:rgba(16,185,129,0.1);">
+                              ${escapeHtml(lc.platform)} · ${escapeHtml(lc.store)} 
+                              <i class="fa-solid fa-xmark" style="cursor:pointer; margin-left:4px;" onclick="unlinkDlc(${lc.collectionEntryId}, ${d.id}, ${g.id})" title="Desasociar"></i>
+                            </span>
+                          `).join(' ')}
+                        ` : '<span style="color:var(--text-muted)">Sin copias asociadas</span>'}
+                      </div>
+                    </div>
+                  `;
+                }).join('')}
+              </div>
+            </div>
+          ` : ''}
+
+          <!-- Gestión y Scraper de Logros -->
+          <div class="section-box" id="achievementsBox">
+            <h3>
+              <span><i class="fa-solid fa-trophy"></i> Logros y Trofeos</span>
+              <div style="display:flex; gap:6px;">
+                <button class="btn btn-primary" style="padding:4px 10px; font-size:0.75rem;" onclick="loadGameAchievements(${g.id})"><i class="fa-solid fa-list-check"></i> Ver Lista</button>
+                <button class="btn btn-secondary" style="padding:4px 10px; font-size:0.75rem;" onclick="toggleAchievementImportTools()"><i class="fa-solid fa-download"></i> Importar</button>
+              </div>
+            </h3>
+
+            <!-- Herramientas de Importación -->
+            <div id="achievementImportTools" style="display:none; background:rgba(0,0,0,0.4); border:1px solid var(--border); border-radius:8px; padding:14px; margin-bottom:12px;">
+              <div style="display:flex; gap:6px; margin-bottom:12px;">
+                <button class="pill-btn active" id="tabScraperBtn" onclick="switchImportTab('scraper')">Scraper TrophiesHunter</button>
+                <button class="pill-btn" id="tabJsonBtn" onclick="switchImportTab('json')">Subir JSON Local</button>
+              </div>
+
+              <!-- Scraper TrophiesHunter -->
+              <div id="importTabScraper">
+                <p style="font-size:0.78rem; color:var(--text-muted); margin-bottom:8px;">Busca el set de logros en TrophiesHunter.</p>
+                <div style="display:flex; gap:6px; margin-bottom:8px; flex-wrap:wrap;">
+                  <input type="text" id="thSearchQuery" value="${escapeAttr(g.name)}" placeholder="Nombre del juego..." style="flex:2; min-width:160px;">
+                  <select id="thPlatformSelect" style="flex:1; min-width:130px;">${appState.platforms.map(p => `<option value="${p.id}" data-name="${escapeAttr(p.name)}">${escapeHtml(p.name)}</option>`).join('')}</select>
+                  <button class="btn btn-secondary" onclick="searchTrophiesHunter(${g.id})">Buscar</button>
+                </div>
+                <div id="thResultsArea" style="display:grid; gap:6px; max-height:160px; overflow-y:auto;"></div>
+              </div>
+
+              <!-- JSON Local -->
+              <div id="importTabJson" style="display:none;">
+                <p style="font-size:0.78rem; color:var(--text-muted); margin-bottom:8px;">Sube el JSON generado por tu scraper local.</p>
+                <div class="form-group"><input type="file" id="localJsonFileInput" accept=".json"></div>
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:10px;">
+                  <div><label>Plataforma</label><select id="jsonPlatformSelect">${appState.platforms.map(p => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('')}</select></div>
+                  <div><label>Tienda (Opcional)</label><select id="jsonStoreSelect"><option value="">Sin tienda</option>${appState.stores.map(s => `<option value="${s.id}">${escapeHtml(s.name)}</option>`).join('')}</select></div>
+                </div>
+                <button class="btn btn-primary" onclick="submitLocalJson(${g.id})">Validar e Importar JSON</button>
+              </div>
+            </div>
+
+            <!-- Listado de Logros -->
+            <div id="gameAchievementsList">
+              <p style="color:var(--text-muted); font-size:0.82rem;">Haz clic en "Ver Lista" para explorar los trofeos.</p>
+            </div>
+          </div>
+        </div>
+      `;
+    } catch (err) {
+      content.innerHTML = `<p style="color:var(--danger); text-align:center;">Error: ${escapeHtml(err.message)}</p>`;
+    }
+  }
+
+  // ================= MODAL DETALLE DE SERIE =================
+  async function openSeriesDetail(seriesId) {
+    if (!seriesId) return;
+    const modal = document.getElementById('seriesDetailModal');
+    const content = document.getElementById('seriesDetailContent');
+    content.innerHTML = '<p style="text-align:center; padding:30px;"><i class="fa-solid fa-spinner fa-spin"></i> Cargando saga...</p>';
+    modal.showModal();
+
+    try {
+      const s = await apiFetch(`/library/series/${seriesId}`);
+      const games = s.games || [];
+
+      content.innerHTML = `
+        <div class="modal-header">
+          <div>
+            <span style="font-size:0.72rem; color:var(--accent); font-weight:700; text-transform:uppercase;">Saga / Franquicia</span>
+            <h2 style="font-family:'Space Grotesk'; font-size:1.5rem;">${escapeHtml(s.name)}</h2>
+          </div>
+          <button class="modal-close" onclick="document.getElementById('seriesDetailModal').close()">&times;</button>
+        </div>
+
+        <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:8px; margin-bottom:16px;">
+          <div style="background:#06080d; padding:10px; border-radius:8px; text-align:center;">
+            <strong style="font-size:1.1rem;">${s.totalGames}</strong><div style="font-size:0.68rem; color:var(--text-muted)">Títulos</div>
+          </div>
+          <div style="background:#06080d; padding:10px; border-radius:8px; text-align:center;">
+            <strong style="font-size:1.1rem; color:var(--cyan);">${s.ownedGames}</strong><div style="font-size:0.68rem; color:var(--text-muted)">Colección</div>
+          </div>
+          <div style="background:#06080d; padding:10px; border-radius:8px; text-align:center;">
+            <strong style="font-size:1.1rem; color:var(--lime);">${s.completedGames}</strong><div style="font-size:0.68rem; color:var(--text-muted)">Completados</div>
+          </div>
+          <div style="background:#06080d; padding:10px; border-radius:8px; text-align:center;">
+            <strong style="font-size:1.1rem; color:var(--warning);">${s.completionPercent}%</strong><div style="font-size:0.68rem; color:var(--text-muted)">Progreso</div>
+          </div>
+        </div>
+
+        <div class="progress-bar-bg" style="margin-bottom:18px;">
+          <div class="progress-bar-fill" style="width:${s.completionPercent}%"></div>
+        </div>
+
+        <h3 style="font-size:0.9rem; margin-bottom:10px; color:#c4b5fd;">Juegos de la Saga</h3>
+        <div style="display:grid; gap:8px; max-height:320px; overflow-y:auto;">
+          ${games.map(g => `
+            <div style="display:flex; justify-content:space-between; align-items:center; background:#06080d; padding:10px 12px; border-radius:8px; border:1px solid var(--border);">
+              <div>
+                <strong style="font-size:0.85rem;">${escapeHtml(g.name)}</strong>
+                <div style="font-size:0.72rem; color:var(--text-muted);">${escapeHtml(g.status || 'No agregado')}</div>
+              </div>
+              <span class="chip" style="${g.owned ? 'color:var(--lime); border-color:rgba(16,185,129,0.3); background:rgba(16,185,129,0.1);' : 'color:var(--text-muted);'}">
+                ${g.owned ? '<i class="fa-solid fa-check"></i> En Colección' : '<i class="fa-solid fa-xmark"></i> Falta'}
+              </span>
+            </div>
+          `).join('')}
+        </div>
+      `;
+    } catch (err) {
+      content.innerHTML = `<p style="color:var(--danger); text-align:center;">Error: ${escapeHtml(err.message)}</p>`;
+    }
+  }
+
+  // ================= LOGROS: GESTOR & SCRAPER =================
+  async function loadGameAchievements(gameId) {
+    const list = document.getElementById('gameAchievementsList');
+    list.innerHTML = '<p><i class="fa-solid fa-spinner fa-spin"></i> Cargando lista de logros...</p>';
+
+    try {
+      const items = await apiFetch(`/library/games/${gameId}/achievements`);
+      if (!items.length) {
+        list.innerHTML = '<p style="color:var(--text-muted); font-size:0.82rem;">No hay logros registrados. Haz clic en "Importar" para añadirlos.</p>';
+        return;
+      }
+
+      list.innerHTML = `
+        <div style="display:grid; gap:8px; max-height:380px; overflow-y:auto; padding-right:4px;">
+          ${items.map(a => `
+            <div style="display:flex; align-items:center; gap:10px; background:#06080d; padding:10px 12px; border-radius:8px; border:1px solid var(--border);">
+              <input type="checkbox" ${a.unlocked ? 'checked' : ''} onchange="toggleAchievement(${a.id}, this.checked)" style="width:18px; height:18px; cursor:pointer;">
+              ${a.imageUrl ? `<img src="${escapeAttr(a.imageUrl)}" style="width:34px; height:34px; border-radius:6px; object-fit:cover;">` : '<div style="width:34px; height:34px; background:#1e293b; border-radius:6px; display:grid; place-items:center;">✧</div>'}
+              <div style="flex:1; min-width:0;">
+                <strong style="font-size:0.85rem; display:block; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(a.name)}</strong>
+                <p style="font-size:0.72rem; color:var(--text-muted);">${escapeHtml(a.description || '')}</p>
+                <div style="font-size:0.68rem; color:var(--text-muted); margin-top:2px;">
+                  <span>${escapeHtml(a.platform)}</span>
+                  ${a.store ? ` · <span>${escapeHtml(a.store)}</span>` : ''}
+                  ${a.rarityPercent !== null ? ` · <span>${a.rarityPercent}% rareza</span>` : ''}
+                </div>
+              </div>
+              <span class="chip" style="color:var(--cyan);">${escapeHtml(a.tier || a.scoreType || 'Logro')}</span>
+            </div>
+          `).join('')}
+        </div>
+      `;
+    } catch (e) {
+      list.innerHTML = `<p style="color:var(--danger);">${escapeHtml(e.message)}</p>`;
+    }
+  }
+
+  function toggleAchievementImportTools() {
+    const t = document.getElementById('achievementImportTools');
+    t.style.display = t.style.display === 'none' ? 'block' : 'none';
+  }
+
+  function switchImportTab(tab) {
+    document.getElementById('importTabScraper').style.display = tab === 'scraper' ? 'block' : 'none';
+    document.getElementById('importTabJson').style.display = tab === 'json' ? 'block' : 'none';
+    document.getElementById('tabScraperBtn').classList.toggle('active', tab === 'scraper');
+    document.getElementById('tabJsonBtn').classList.toggle('active', tab === 'json');
+  }
+
+  async function searchTrophiesHunter(gameId) {
+    const q = document.getElementById('thSearchQuery').value.trim();
+    const pSel = document.getElementById('thPlatformSelect');
+    const platName = pSel.selectedOptions[0]?.dataset.name || '';
+    const out = document.getElementById('thResultsArea');
+    if (!q) return;
+
+    out.innerHTML = '<p style="font-size:0.78rem; color:var(--text-muted);"><i class="fa-solid fa-spinner fa-spin"></i> Buscando...</p>';
+    try {
+      const items = await apiFetch(`/achievement-sources/trophieshunter/search?game=${encodeURIComponent(q)}&platform=${encodeURIComponent(platName)}`);
+      if (!items.length) {
+        out.innerHTML = '<p style="font-size:0.78rem; color:var(--text-muted);">No se encontraron resultados.</p>';
+        return;
+      }
+
+      out.innerHTML = items.map(x => `
+        <div style="display:flex; justify-content:space-between; align-items:center; background:#0c101a; padding:8px 10px; border-radius:6px; border:1px solid var(--border);">
+          <div>
+            <strong style="font-size:0.82rem;">${escapeHtml(x.name)}</strong>
+            <div style="font-size:0.68rem; color:var(--text-muted);">${escapeHtml(x.platform || platName)} · ${x.achievementCount} logros</div>
+          </div>
+          <button class="btn btn-primary" style="padding:4px 8px; font-size:0.72rem;" onclick="importFromThUrl(${gameId}, '${escapeAttr(x.url)}', ${pSel.value})">Importar</button>
+        </div>
+      `).join('');
+    } catch (e) {
+      out.innerHTML = `<p style="font-size:0.78rem; color:var(--danger);">${escapeHtml(e.message)}</p>`;
+    }
+  }
+
+  async function importFromThUrl(gameId, sourceUrl, platformId) {
+    showLoading('Extrayendo Logros', 'Conectando con TrophiesHunter y procesando lista...');
+    try {
+      const res = await apiFetch(`/library/games/${gameId}/achievements/import`, {
+        method: 'POST',
+        body: JSON.stringify({ platformId: Number(platformId), sourceUrl, storeId: null })
+      });
+      hideLoading();
+      showToast(`${res.imported} logros importados correctamente`);
+      loadGameAchievements(gameId);
+      loadStats();
+    } catch (e) {
+      hideLoading();
+      showToast(e.message, 'error');
+    }
+  }
+
+  async function submitLocalJson(gameId) {
+    const fileInput = document.getElementById('localJsonFileInput');
+    const file = fileInput.files?.[0];
+    if (!file) {
+      showToast('Selecciona un archivo JSON', 'error');
+      return;
+    }
+
+    showLoading('Validando JSON', 'Guardando conjunto de logros en la base de datos...');
+    try {
+      const payload = JSON.parse(await file.text());
+      const pId = Number(document.getElementById('jsonPlatformSelect').value);
+      const sId = document.getElementById('jsonStoreSelect').value ? Number(document.getElementById('jsonStoreSelect').value) : null;
+
+      const body = {
+        ...payload,
+        gameId: Number(gameId),
+        platformId: pId,
+        storeId: sId
+      };
+
+      const res = await apiFetch(`/library/games/${gameId}/achievements/import-json`, {
+        method: 'POST',
+        body: JSON.stringify(body)
+      });
+      hideLoading();
+      showToast(`${res.imported} logros importados correctamente`);
+      loadGameAchievements(gameId);
+      loadStats();
+    } catch (e) {
+      hideLoading();
+      showToast(e.message, 'error');
+    }
+  }
+
+  // ================= ACCIONES DE DLC Y COPIAS =================
+  async function linkDlcToCopy(dlcId, gameId) {
+    const copyId = document.getElementById(`dlcCopySelect_${dlcId}`).value;
+    if (!copyId) {
+      showToast('Selecciona una copia para asociar', 'error');
+      return;
+    }
+    try {
+      await apiFetch(`/library/collection/${copyId}/dlcs/${dlcId}`, {
+        method: 'POST',
+        body: JSON.stringify({ owned: true })
+      });
+      showToast('DLC asociado a la copia');
+      openGameDetail(gameId);
+    } catch (e) {
+      showToast(e.message, 'error');
+    }
+  }
+
+  async function unlinkDlc(copyId, dlcId, gameId) {
+    if (!confirm('¿Desasociar este DLC de la copia?')) return;
+    try {
+      await apiFetch(`/library/collection/${copyId}/dlcs/${dlcId}`, { method: 'DELETE' });
+      showToast('DLC desasociado');
+      openGameDetail(gameId);
+    } catch (e) {
+      showToast(e.message, 'error');
+    }
+  }
+
+  function openAddCopyModal(gameId) {
+    document.getElementById('copyGameId').value = gameId;
+    populateCatalogSelects();
+    document.getElementById('addCopyModal').showModal();
+  }
+
+  async function deleteCopy(copyId, gameId) {
+    if (!confirm('¿Eliminar esta copia de tu colección?')) return;
+    try {
+      await apiFetch(`/library/collection/${copyId}`, { method: 'DELETE' });
+      showToast('Copia eliminada');
+      openGameDetail(gameId);
+      loadStats();
+    } catch (e) {
+      showToast(e.message, 'error');
+    }
+  }
+
+  async function toggleAchievement(id, unlocked) {
+    try {
+      await apiFetch(`/library/achievements/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ unlocked })
+      });
+      loadStats();
+      showToast(unlocked ? 'Logro desbloqueado' : 'Logro pendiente');
+    } catch (e) {
+      showToast(e.message, 'error');
+    }
+  }
+
+  async function refreshIgdb(id) {
+    showLoading('Actualizando desde IGDB', 'Descargando metadatos actualizados, portadas y sagas...');
+    try {
+      await apiFetch(`/library/games/${id}/igdb/refresh`, { method: 'POST' });
+      hideLoading();
+      showToast('Datos actualizados desde IGDB');
+      openGameDetail(id);
+      loadGames();
+    } catch (e) {
+      hideLoading();
+      showToast(e.message, 'error');
+    }
+  }
+
+  function toggleEditPanel() {
+    const p = document.getElementById('quickEditPanel');
+    p.style.display = p.style.display === 'none' ? 'block' : 'none';
+  }
+
+  async function saveQuickEdit(id) {
+    try {
+      await apiFetch(`/library/games/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          status: document.getElementById('editStatus').value,
+          myRating: document.getElementById('editRating').value ? Number(document.getElementById('editRating').value) : null,
+          playTimeHours: document.getElementById('editHours').value ? Number(document.getElementById('editHours').value) : null,
+          notes: document.getElementById('editNotes').value.trim() || null
+        })
+      });
+      showToast('Ficha actualizada');
+      openGameDetail(id);
+      loadGames();
+    } catch (e) {
+      showToast(e.message, 'error');
+    }
+  }
+
+  // ================= VISTAS SECUNDARIAS =================
+  async function loadCollection() {
+    const grid = document.getElementById('collectionGrid');
+    grid.innerHTML = '<p><i class="fa-solid fa-spinner fa-spin"></i> Cargando colección...</p>';
+    const search = document.getElementById('collectionSearch')?.value.trim();
+
+    try {
+      const items = await apiFetch('/library/collection' + (search ? `?search=${encodeURIComponent(search)}` : '')) || [];
+      document.getElementById('collectionTotalCount').textContent = `${items.length} copias`;
+      if (!items.length) {
+        grid.innerHTML = '<p style="color:var(--text-muted);">No hay copias registradas.</p>';
+        return;
+      }
+
+      grid.innerHTML = items.map(c => `
+        <article class="copy-card">
+          <div class="copy-cover" ${c.coverUrl ? `style="background-image:url('${escapeAttr(c.coverUrl)}');"` : ''}></div>
+          <div class="copy-info">
+            <div>
+              <span class="status-badge" style="margin-bottom:4px;">${escapeHtml(c.status)}</span>
+              <h3 style="font-size:0.92rem; font-weight:700;">${escapeHtml(c.gameName)}</h3>
+              <p style="font-size:0.72rem; color:var(--text-muted);">${escapeHtml(c.platform)} · ${escapeHtml(c.store)}</p>
+            </div>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-top:8px;">
+              <span class="chip">${escapeHtml(c.format || 'Digital')}</span>
+              <button class="btn btn-secondary" style="padding:4px 8px; font-size:0.72rem;" onclick="openGameDetail(${c.gameId})">Ver Ficha</button>
+            </div>
+          </div>
+        </article>
+      `).join('');
+    } catch (e) {
+      grid.innerHTML = `<p style="color:var(--danger);">${escapeHtml(e.message)}</p>`;
+    }
+  }
+
+  async function loadSeries() {
+    const grid = document.getElementById('seriesGrid');
+    grid.innerHTML = '<p><i class="fa-solid fa-spinner fa-spin"></i> Cargando sagas...</p>';
+
+    try {
+      const series = await apiFetch('/library/series') || [];
+      if (!series.length) {
+        grid.innerHTML = '<p style="color:var(--text-muted);">No hay series registradas.</p>';
+        return;
+      }
+
+      grid.innerHTML = series.map(s => `
+        <article class="series-card" onclick="openSeriesDetail(${s.id})">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <i class="fa-solid fa-cubes" style="color:var(--warning); font-size:1.3rem;"></i>
+            <span style="font-size:0.85rem; font-weight:800; color:var(--cyan);">${s.completionPercent}%</span>
+          </div>
+          <h3>${escapeHtml(s.name)}</h3>
+          <p style="font-size:0.78rem; color:var(--text-muted); margin-bottom:10px;">${s.ownedGames} de ${s.totalGames} en tu colección</p>
+          <div class="progress-bar-bg">
+            <div class="progress-bar-fill" style="width:${s.completionPercent}%"></div>
+          </div>
+        </article>
+      `).join('');
+    } catch (e) {
+      grid.innerHTML = `<p style="color:var(--danger);">${escapeHtml(e.message)}</p>`;
+    }
+  }
+
+  async function loadGlobalAchievements() {
+    const list = document.getElementById('globalAchievementsList');
+    list.innerHTML = '<p><i class="fa-solid fa-spinner fa-spin"></i> Cargando logros...</p>';
+
+    const params = new URLSearchParams();
+    const search = document.getElementById('globalAchievementSearch').value.trim();
+    if (search) params.set('search', search);
+
+    const gId = document.getElementById('filterGame').value;
+    const pId = document.getElementById('filterPlatform').value;
+    const unl = document.getElementById('filterStatus').value;
+
+    if (gId) params.set('gameId', gId);
+    if (pId) params.set('platformId', pId);
+    if (unl) params.set('unlocked', unl);
+
+    try {
+      const items = await apiFetch('/library/achievements?' + params.toString()) || [];
+      const unlockedCount = items.filter(x => x.unlocked).length;
+      document.getElementById('achievementsGlobalSummary').textContent = `${unlockedCount} desbloqueados · ${items.length - unlockedCount} pendientes (Total: ${items.length})`;
+
+      if (!items.length) {
+        list.innerHTML = '<p style="color:var(--text-muted);">No se encontraron logros.</p>';
+        return;
+      }
+
+      list.innerHTML = items.slice(0, 100).map(a => `
+        <div style="display:grid; grid-template-columns:auto 40px 1fr auto; gap:10px; align-items:center; background:var(--panel); border:1px solid var(--border); border-radius:8px; padding:10px 12px; margin-bottom:8px;">
+          <input type="checkbox" ${a.unlocked ? 'checked' : ''} onchange="toggleAchievement(${a.id}, this.checked)" style="width:18px; height:18px; cursor:pointer;">
+          ${a.imageUrl ? `<img src="${escapeAttr(a.imageUrl)}" style="width:40px; height:40px; border-radius:6px; object-fit:cover;">` : '<div style="width:40px; height:40px; background:#1e293b; border-radius:6px; display:grid; place-items:center;">✧</div>'}
+          <div style="min-width:0;">
+            <strong style="font-size:0.85rem; display:block; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(a.name)}</strong>
+            <p style="font-size:0.72rem; color:var(--text-muted);">${escapeHtml(a.gameName)} · ${escapeHtml(a.platform)}</p>
+          </div>
+          <button class="btn btn-secondary" style="padding:4px 8px; font-size:0.72rem;" onclick="openGameDetail(${a.gameId})">Ver</button>
+        </div>
+      `).join('');
+    } catch (e) {
+      list.innerHTML = `<p style="color:var(--danger);">${escapeHtml(e.message)}</p>`;
+    }
+  }
+
+  // ================= BÚSQUEDA & IMPORTACIÓN IGDB =================
+  async function searchIgdb() {
+    const q = document.getElementById('igdbQueryInput').value.trim();
+    const type = document.getElementById('igdbSearchType').value;
+    const out = document.getElementById('igdbSearchResults');
+    if (!q) return;
+
+    out.innerHTML = '<p style="color:var(--text-muted); font-size:0.85rem;"><i class="fa-solid fa-spinner fa-spin"></i> Buscando en IGDB...</p>';
+    try {
+      const endpoint = type === 'id' ? `/igdb/search?id=${encodeURIComponent(q)}` : `/igdb/search?q=${encodeURIComponent(q)}`;
+      const results = await apiFetch(endpoint);
+      if (!results.length) {
+        out.innerHTML = '<p style="color:var(--text-muted); font-size:0.8rem;">No se encontraron coincidencias.</p>';
+        return;
+      }
+      out.innerHTML = results.map(r => `
+        <div style="display:flex; align-items:center; justify-content:space-between; background:#06080d; padding:8px 10px; border-radius:8px; border:1px solid var(--border);">
+          <div style="display:flex; align-items:center; gap:8px; min-width:0;">
+            ${r.coverUrl ? `<img src="${escapeAttr(r.coverUrl)}" style="width:30px; height:40px; border-radius:4px; object-fit:cover; flex-shrink:0;">` : ''}
+            <div style="min-width:0;">
+              <strong style="font-size:0.82rem; display:block; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(r.name)}</strong>
+              <div style="font-size:0.68rem; color:var(--text-muted);">${r.releaseYear || 'Año desc.'} · ${escapeHtml((r.platforms || []).join(', '))}</div>
+            </div>
+          </div>
+          <button class="btn btn-primary" style="padding:4px 8px; font-size:0.72rem; flex-shrink:0;" onclick="importIgdbGame(${r.id})">Importar</button>
+        </div>
+      `).join('');
+    } catch (e) {
+      out.innerHTML = `<p style="color:var(--danger); font-size:0.8rem;">${escapeHtml(e.message)}</p>`;
+    }
+  }
+
+  async function importIgdbGame(igdbId) {
+    document.getElementById('addGameModal').close();
+    showLoading('Importando Juego de IGDB', 'Sincronizando información, portada, capturas, sagas y DLCs...');
+    try {
+      await apiFetch('/library/games/import', {
+        method: 'POST',
+        body: JSON.stringify({ igdbId })
+      });
+      hideLoading();
+      showToast('¡Juego importado con éxito!');
+      loadStats();
+      loadGames();
+    } catch (e) {
+      hideLoading();
+      showToast(e.message, 'error');
+    }
+  }
+
+  // ================= NAVEGACIÓN & RESPONSIVE =================
+  function switchView(viewId, btn) {
+    document.querySelectorAll('.view-section').forEach(v => v.classList.remove('active'));
+    document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById(viewId).classList.add('active');
+    btn.classList.add('active');
+
+    // Auto cerrar sidebar en celular al pulsar opción
+    if (window.innerWidth <= 900) {
+      toggleSidebar(false);
+    }
+
+    const titles = {
+      'view-games': ['Biblioteca de Videojuegos', 'Explora, sincroniza y gestiona tu catálogo personal'],
+      'view-collection': ['Mi Colección', 'Control de copias, plataformas y tiendas'],
+      'view-series': ['Sagas & Franquicias', 'Progreso de compleción por saga'],
+      'view-achievements': ['Centro de Logros Global', 'Lista de trofeos unificada']
+    };
+    document.getElementById('pageTitle').textContent = titles[viewId][0];
+    document.getElementById('pageSubtitle').textContent = titles[viewId][1];
+
+    if (viewId === 'view-collection') loadCollection();
+    if (viewId === 'view-series') loadSeries();
+    if (viewId === 'view-achievements') {
+      const fg = document.getElementById('filterGame');
+      fg.innerHTML = '<option value="">Todos los juegos</option>' + appState.games.map(g => `<option value="${g.id}">${escapeHtml(g.name)}</option>`).join('');
+      loadGlobalAchievements();
+    }
+  }
+
+  function openAddGameModal() { document.getElementById('addGameModal').showModal(); }
+  function toggleSidebar(forceState) {
+    const sidebar = document.getElementById('sidebar');
+    const backdrop = document.getElementById('sidebarBackdrop');
+    const isOpen = typeof forceState === 'boolean' ? forceState : !sidebar.classList.contains('open');
+    sidebar.classList.toggle('open', isOpen);
+    backdrop.classList.toggle('active', isOpen);
+  }
+
+  function safeJsonParse(str) { try { return JSON.parse(str || '[]'); } catch { return []; } }
+  function escapeHtml(s) { return String(s ?? '').replace(/[&<>'"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;' }[c])); }
+  function escapeAttr(s) { return escapeHtml(s).replace(/`/g, '&#96;'); }
+  function debounce(fn, ms) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; }
+
+  function showToast(msg, type = 'info') {
+    const box = document.getElementById('toastContainer');
+    const toast = document.createElement('div');
+    toast.className = 'toast';
+    toast.innerHTML = `<i class="fa-solid ${type==='error'?'fa-circle-exclamation text-danger':'fa-circle-check text-success'}"></i> <span>${escapeHtml(msg)}</span>`;
+    box.appendChild(toast);
+    setTimeout(() => toast.remove(), 3500);
+  }
+</script>
+</body>
+</html>
