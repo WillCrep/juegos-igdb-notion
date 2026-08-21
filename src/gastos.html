@@ -1,0 +1,823 @@
+<!DOCTYPE html>
+<html lang="es" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Control Financiero & Hogar</title>
+  
+  <!-- Fuentes e Iconos via CDN -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+
+  <style>
+    /* ========================================================
+       VARIABLES DE COLOR (MODO OSCURO - DEFAULT)
+       ======================================================== */
+    :root {
+      --bg: #0b0f19;
+      --card-bg: #121827;
+      --card-border: #1f293d;
+      --input-bg: #090d16;
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+      --primary: #38bdf8;
+      --primary-hover: #0284c7;
+      --primary-text: #090d16;
+      --success: #10b981;
+      --danger: #f43f5e;
+      --warning: #f59e0b;
+      --overlay-bg: rgba(9, 13, 22, 0.95);
+      --switch-bg: #334155;
+      --radius: 12px;
+    }
+
+    /* ========================================================
+       VARIABLES DE COLOR (MODO CLARO)
+       ======================================================== */
+    [data-theme="light"] {
+      --bg: #f1f5f9;
+      --card-bg: #ffffff;
+      --card-border: #e2e8f0;
+      --input-bg: #f8fafc;
+      --text: #0f172a;
+      --text-muted: #64748b;
+      --primary: #0284c7;
+      --primary-hover: #0369a1;
+      --primary-text: #ffffff;
+      --success: #059669;
+      --danger: #e11d48;
+      --warning: #d97706;
+      --overlay-bg: rgba(15, 23, 42, 0.7);
+      --switch-bg: #cbd5e1;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Plus Jakarta Sans', sans-serif; transition: background-color 0.25s ease, border-color 0.25s ease; }
+    body { background-color: var(--bg); color: var(--text); padding: 20px; min-height: 100vh; }
+    .container { max-width: 1200px; margin: auto; }
+
+    /* Top Bar */
+    header {
+      display: flex; justify-content: space-between; align-items: center;
+      padding-bottom: 20px; border-bottom: 1px solid var(--card-border); margin-bottom: 20px; flex-wrap: wrap; gap: 15px;
+    }
+    .user-info { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .badge-pill {
+      background: var(--input-bg); border: 1px solid var(--card-border); color: var(--text);
+      padding: 6px 12px; border-radius: 20px; font-size: 0.8rem; display: flex; align-items: center; gap: 6px;
+    }
+    
+    /* Botones de acción Header */
+    .btn-theme {
+      background: var(--input-bg); border: 1px solid var(--card-border); color: var(--text);
+      padding: 8px 12px; border-radius: 8px; cursor: pointer; font-size: 0.9rem; font-weight: 600; display: flex; align-items: center; gap: 6px;
+    }
+    .btn-theme:hover { border-color: var(--primary); }
+
+    .btn-logout { 
+      background: none; border: 1px solid var(--danger); color: var(--danger); 
+      padding: 7px 12px; border-radius: 8px; cursor: pointer; font-size: 0.8rem; font-weight: 600; 
+    }
+    .btn-logout:hover { background: var(--danger); color: white; }
+
+    /* Navigation Tabs */
+    .tabs { display: flex; gap: 10px; margin-bottom: 25px; }
+    .tab-btn {
+      background: transparent; border: none; color: var(--text-muted);
+      padding: 10px 18px; font-size: 0.95rem; font-weight: 600; cursor: pointer; border-radius: 8px;
+    }
+    .tab-btn.active { background: var(--card-bg); color: var(--primary); border: 1px solid var(--card-border); }
+
+    /* KPIs */
+    .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 15px; margin-bottom: 25px; }
+    .kpi-card {
+      background: var(--card-bg); padding: 20px; border-radius: var(--radius);
+      border: 1px solid var(--card-border); display: flex; flex-direction: column; justify-content: space-between;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    }
+    .kpi-header { display: flex; justify-content: space-between; color: var(--text-muted); font-size: 0.8rem; font-weight: 600; text-transform: uppercase; margin-bottom: 8px; }
+    .kpi-amount { font-size: 1.6rem; font-weight: 800; }
+
+    /* Layout */
+    .content-grid { display: grid; grid-template-columns: 360px 1fr; gap: 20px; }
+    @media (max-width: 900px) { .content-grid { grid-template-columns: 1fr; } }
+
+    .card { 
+      background: var(--card-bg); padding: 22px; border-radius: var(--radius); 
+      border: 1px solid var(--card-border); box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    }
+    .card h2 { font-size: 1.1rem; font-weight: 700; margin-bottom: 18px; display: flex; align-items: center; gap: 8px; }
+
+    /* Form Controls */
+    .form-group { margin-bottom: 14px; }
+    label { display: block; font-size: 0.8rem; font-weight: 600; color: var(--text-muted); margin-bottom: 6px; }
+    input, select {
+      width: 100%; padding: 11px 14px; border-radius: 8px; background: var(--input-bg);
+      border: 1px solid var(--card-border); color: var(--text); font-size: 0.9rem; outline: none;
+    }
+    input:focus, select:focus { border-color: var(--primary); }
+    
+    .btn-submit {
+      width: 100%; padding: 12px; background: var(--primary); color: var(--primary-text);
+      font-weight: 700; border: none; border-radius: 8px; cursor: pointer; margin-top: 10px;
+    }
+    .btn-submit:hover { background: var(--primary-hover); }
+
+    /* Switch Component */
+    .switch-group {
+      display: flex; align-items: center; justify-content: space-between;
+      background: var(--input-bg); padding: 12px; border-radius: 8px; border: 1px solid var(--card-border); margin-top: 10px;
+    }
+    .switch { position: relative; display: inline-block; width: 44px; height: 24px; }
+    .switch input { opacity: 0; width: 0; height: 0; }
+    .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: var(--switch-bg); border-radius: 24px; transition: .3s; }
+    .slider:before { position: absolute; content: ""; height: 18px; width: 18px; left: 3px; bottom: 3px; background-color: white; border-radius: 50%; transition: .3s; }
+    input:checked + .slider { background-color: var(--primary); }
+    input:checked + .slider:before { transform: translateX(20px); }
+
+    /* Table & Filter Bar */
+    .table-toolbar { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 15px; }
+    .filters { display: flex; gap: 6px; }
+    .filter-btn {
+      padding: 6px 12px; font-size: 0.75rem; font-weight: 600; border-radius: 6px;
+      background: var(--input-bg); border: 1px solid var(--card-border); color: var(--text-muted); cursor: pointer;
+    }
+    .filter-btn.active { background: var(--primary); color: var(--primary-text); border-color: var(--primary); }
+
+    table { width: 100%; border-collapse: collapse; text-align: left; font-size: 0.85rem; }
+    th, td { padding: 12px 10px; border-bottom: 1px solid var(--card-border); }
+    th { color: var(--text-muted); font-weight: 600; font-size: 0.75rem; text-transform: uppercase; }
+    .badge { padding: 4px 8px; border-radius: 6px; font-size: 0.75rem; font-weight: 700; display: inline-block; }
+    .badge-in { background: rgba(16, 185, 129, 0.15); color: var(--success); }
+    .badge-ex { background: rgba(244, 63, 94, 0.15); color: var(--danger); }
+    .badge-home { background: rgba(56, 189, 248, 0.15); color: var(--primary); font-size: 0.65rem; padding: 2px 6px; border-radius: 4px; }
+
+    /* Accounts & Categories Grids */
+    .grid-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 15px; }
+    .item-card { background: var(--input-bg); padding: 16px; border-radius: 8px; border: 1px solid var(--card-border); }
+
+    /* Auth Modal Overlay */
+    #authOverlay {
+      position: fixed; inset: 0; background: var(--overlay-bg); backdrop-filter: blur(4px);
+      display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 20px;
+    }
+    .auth-card { 
+      background: var(--card-bg); width: 100%; max-width: 420px; padding: 30px; 
+      border-radius: var(--radius); border: 1px solid var(--card-border); box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+    }
+    .auth-tabs { display: flex; margin-bottom: 20px; border-bottom: 1px solid var(--card-border); }
+    .auth-tab { flex: 1; padding: 10px; background: none; border: none; color: var(--text-muted); font-weight: 700; cursor: pointer; }
+    .auth-tab.active { color: var(--primary); border-bottom: 2px solid var(--primary); }
+
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+    #loader { display: none; color: var(--primary); text-align: center; font-size: 0.9rem; font-weight: 600; margin-bottom: 15px; }
+  </style>
+</head>
+<body>
+
+<!-- MODAL DE LOGIN / REGISTRO (Si no hay token) -->
+<div id="authOverlay" style="display: none;">
+  <div class="auth-card">
+    <div class="auth-tabs">
+      <button class="auth-tab active" onclick="switchAuthTab('login')">Iniciar Sesión</button>
+      <button class="auth-tab" onclick="switchAuthTab('register')">Registrarse</button>
+    </div>
+
+    <!-- Login -->
+    <form id="formLogin">
+      <div class="form-group">
+        <label>Correo Electrónico</label>
+        <input type="email" id="loginEmail" required placeholder="correo@ejemplo.com">
+      </div>
+      <div class="form-group">
+        <label>Contraseña</label>
+        <input type="password" id="loginPassword" required placeholder="••••••••">
+      </div>
+      <button type="submit" class="btn-submit" id="btnLoginSubmit">Ingresar</button>
+    </form>
+
+    <!-- Registro -->
+    <form id="formRegister" style="display: none;">
+      <div class="form-group">
+        <label>Nombre Completo</label>
+        <input type="text" id="regName" required placeholder="Ej: Carlos Gómez">
+      </div>
+      <div class="form-group">
+        <label>Correo Electrónico</label>
+        <input type="email" id="regEmail" required placeholder="correo@ejemplo.com">
+      </div>
+      <div class="form-group">
+        <label>Contraseña</label>
+        <input type="password" id="regPassword" required placeholder="••••••••">
+      </div>
+      <div class="form-group">
+        <label>¿Crear un Hogar nuevo? (Opcional)</label>
+        <input type="text" id="regHomeName" placeholder="Ej: Casa Depa 402">
+      </div>
+      <div class="form-group">
+        <label>O ingresar Código de Invitación</label>
+        <input type="text" id="regInviteCode" placeholder="Ej: CASA-1234">
+      </div>
+      <button type="submit" class="btn-submit" id="btnRegSubmit">Crear Cuenta</button>
+    </form>
+  </div>
+</div>
+
+<!-- CONTENEDOR PRINCIPAL DE LA APP -->
+<div class="container" id="mainApp">
+  <header>
+    <div>
+      <h1 style="font-size: 1.4rem; font-weight: 800;">Panel Financiero</h1>
+      <p style="font-size: 0.8rem; color: var(--text-muted);">Gestión de Gastos Personales y del Hogar</p>
+    </div>
+    
+    <div class="user-info">
+      <!-- Botón Modo Claro / Oscuro -->
+      <button class="btn-theme" onclick="toggleTheme()" id="themeBtn" title="Cambiar tema">
+        <i class="fa-solid fa-sun"></i> <span id="themeText">Claro</span>
+      </button>
+
+      <div class="badge-pill" id="userBadge"><i class="fa-solid fa-user"></i> <span>...</span></div>
+      <div class="badge-pill" id="homeBadge" style="color: var(--primary);"><i class="fa-solid fa-house"></i> <span>...</span></div>
+      <button class="btn-logout" onclick="logout()"><i class="fa-solid fa-arrow-right-from-bracket"></i> Salir</button>
+    </div>
+  </header>
+
+  <!-- Pestañas Principales -->
+  <div class="tabs">
+    <button class="tab-btn active" onclick="switchTab('tab-movimientos')"><i class="fa-solid fa-chart-pie"></i> Movimientos</button>
+    <button class="tab-btn" onclick="switchTab('tab-cuentas')"><i class="fa-solid fa-credit-card"></i> Mis Cuentas</button>
+    <button class="tab-btn" onclick="switchTab('tab-categorias')"><i class="fa-solid fa-tags"></i> Categorías</button>
+  </div>
+
+  <div id="loader"><i class="fa-solid fa-spinner fa-spin"></i> Sincronizando con Azure SQL...</div>
+
+  <!-- PESTAÑA 1: MOVIMIENTOS & KPIS -->
+  <div id="tab-movimientos" class="tab-content active">
+    
+    <!-- Tarjetas de Resumen KPI -->
+    <div class="kpi-grid">
+      <div class="kpi-card">
+        <div class="kpi-header"><span>Dinero Disponible</span><i class="fa-solid fa-wallet" style="color:var(--primary)"></i></div>
+        <div id="kpiLiquid" class="kpi-amount" style="color:var(--primary)">S/ 0.00</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-header"><span>Deuda Tarjetas (TC)</span><i class="fa-solid fa-credit-card" style="color:var(--warning)"></i></div>
+        <div id="kpiDebt" class="kpi-amount" style="color:var(--warning)">S/ 0.00</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-header"><span>Ingresos Mes</span><i class="fa-solid fa-arrow-trend-up" style="color:var(--success)"></i></div>
+        <div id="kpiIncome" class="kpi-amount" style="color:var(--success)">+S/ 0.00</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-header"><span>Gastos Mes (Míos)</span><i class="fa-solid fa-arrow-trend-down" style="color:var(--danger)"></i></div>
+        <div id="kpiExpense" class="kpi-amount" style="color:var(--danger)">-S/ 0.00</div>
+      </div>
+      <div class="kpi-card" id="kpiHomeCard">
+        <div class="kpi-header"><span>Total Gastos Casa</span><i class="fa-solid fa-house" style="color:var(--primary)"></i></div>
+        <div id="kpiHomeExpense" class="kpi-amount" style="color:var(--primary)">S/ 0.00</div>
+      </div>
+    </div>
+
+    <!-- Registro & Historial -->
+    <div class="content-grid">
+      <!-- Formulario Nueva Transacción -->
+      <div class="card">
+        <h2><i class="fa-solid fa-plus-circle"></i> Nuevo Movimiento</h2>
+        <form id="formTx">
+          <div class="form-group">
+            <label>Tipo</label>
+            <select id="txType" required>
+              <option value="EXPENSE">Gasto (-)</option>
+              <option value="INCOME">Ingreso (+)</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Monto</label>
+            <input type="number" id="txAmount" step="0.01" min="0.01" required placeholder="0.00">
+          </div>
+          <div class="form-group">
+            <label>Cuenta</label>
+            <select id="txAccount" required></select>
+          </div>
+          <div class="form-group">
+            <label>Categoría</label>
+            <select id="txCategory" required></select>
+          </div>
+          <div class="form-group">
+            <label>Fecha</label>
+            <input type="date" id="txDate" required>
+          </div>
+          <div class="form-group">
+            <label>Descripción / Detalle</label>
+            <input type="text" id="txDesc" placeholder="Ej: Compra supermercado">
+          </div>
+
+          <!-- Switch para Compartir con el Hogar -->
+          <div class="switch-group" id="homeSwitchGroup">
+            <div>
+              <span style="font-size: 0.85rem; font-weight:700;">🏠 Gasto del Hogar</span>
+              <p style="font-size: 0.7rem; color: var(--text-muted);">Compartir con los miembros de la casa</p>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="txIsHousehold">
+              <span class="slider"></span>
+            </label>
+          </div>
+
+          <button type="submit" class="btn-submit" id="btnSaveTx">Registrar</button>
+        </form>
+      </div>
+
+      <!-- Tabla de Transacciones -->
+      <div class="card">
+        <div class="table-toolbar">
+          <h2><i class="fa-solid fa-list"></i> Movimientos</h2>
+          
+          <div style="display:flex; gap:10px; flex-wrap:wrap;">
+            <!-- Scope Filter -->
+            <div class="filters">
+              <button class="filter-btn active" onclick="setScope('ALL', this)">Todos</button>
+              <button class="filter-btn" onclick="setScope('PERSONAL', this)">Privados</button>
+              <button class="filter-btn" onclick="setScope('HOUSEHOLD', this)">Del Hogar</button>
+            </div>
+            <!-- Type Filter -->
+            <div class="filters">
+              <button class="filter-btn active" onclick="setTypeFilter('', this)">Ambos</button>
+              <button class="filter-btn" onclick="setTypeFilter('INCOME', this)">+ Ingresos</button>
+              <button class="filter-btn" onclick="setTypeFilter('EXPENSE', this)">- Gastos</button>
+            </div>
+          </div>
+        </div>
+
+        <div style="overflow-x: auto;">
+          <table>
+            <thead>
+              <tr>
+                <th>Fecha</th>
+                <th>Concepto</th>
+                <th>Cuenta</th>
+                <th>Pagado Por</th>
+                <th>Monto</th>
+              </tr>
+            </thead>
+            <tbody id="txTableBody">
+              <tr><td colspan="5" style="text-align:center;">Cargando...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PESTAÑA 2: GESTIÓN DE CUENTAS -->
+  <div id="tab-cuentas" class="tab-content">
+    <div class="content-grid">
+      <div class="card">
+        <h2><i class="fa-solid fa-plus-circle"></i> Crear Cuenta</h2>
+        <form id="formAccount">
+          <div class="form-group">
+            <label>Nombre de la Cuenta</label>
+            <input type="text" id="accName" required placeholder="Ej: BCP Débito, Efectivo, Visa Oro">
+          </div>
+          <div class="form-group">
+            <label>Tipo de Cuenta</label>
+            <select id="accType" required></select>
+          </div>
+          <div class="form-group">
+            <label>Saldo Inicial</label>
+            <input type="number" id="accInitial" step="0.01" required value="0.00">
+          </div>
+          <div class="form-group">
+            <label>Moneda</label>
+            <input type="text" id="accCurrency" required value="PEN" maxlength="3">
+          </div>
+          <div class="switch-group">
+            <div>
+              <span style="font-size: 0.85rem; font-weight:700;">👥 Fondo Compartido</span>
+              <p style="font-size: 0.7rem; color: var(--text-muted);">Visible por toda la casa</p>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="accIsShared">
+              <span class="slider"></span>
+            </label>
+          </div>
+          <button type="submit" class="btn-submit">Crear Cuenta</button>
+        </form>
+      </div>
+
+      <div class="card">
+        <h2><i class="fa-solid fa-building-columns"></i> Cuentas Activas</h2>
+        <div id="accountsList" class="grid-cards"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PESTAÑA 3: CATEGORÍAS -->
+  <div id="tab-categorias" class="tab-content">
+    <div class="content-grid">
+      <div class="card">
+        <h2><i class="fa-solid fa-plus-circle"></i> Nueva Categoría</h2>
+        <form id="formCategory">
+          <div class="form-group">
+            <label>Nombre</label>
+            <input type="text" id="catName" required placeholder="Ej: Supermercado, Alquiler, Sueldo">
+          </div>
+          <div class="form-group">
+            <label>Tipo</label>
+            <select id="catType" required>
+              <option value="EXPENSE">Gasto</option>
+              <option value="INCOME">Ingreso</option>
+            </select>
+          </div>
+          <button type="submit" class="btn-submit">Guardar Categoría</button>
+        </form>
+      </div>
+
+      <div class="card">
+        <h2><i class="fa-solid fa-layer-group"></i> Categorías Registradas</h2>
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+          <div>
+            <h3 style="color:var(--success); font-size:0.9rem; margin-bottom:10px;">Ingresos</h3>
+            <div id="catIncomeList" class="grid-cards" style="grid-template-columns: 1fr;"></div>
+          </div>
+          <div>
+            <h3 style="color:var(--danger); font-size:0.9rem; margin-bottom:10px;">Gastos</h3>
+            <div id="catExpenseList" class="grid-cards" style="grid-template-columns: 1fr;"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  const API_BASE = '/api';
+  let jwtToken = localStorage.getItem('token_jwt');
+  let appData = { accounts: [], categories: [], accountTypes: [], user: null, household: null };
+  let currentScope = 'ALL';
+  let currentTypeFilter = '';
+
+  // INICIALIZACIÓN
+  document.addEventListener('DOMContentLoaded', () => {
+    initTheme(); // Cargar tema guardado (claro u oscuro)
+    document.getElementById('txDate').value = new Date().toISOString().split('T')[0];
+    
+    if (!jwtToken) {
+      document.getElementById('authOverlay').style.display = 'flex';
+    } else {
+      initApp();
+    }
+
+    // Formularios
+    document.getElementById('formLogin').addEventListener('submit', handleLogin);
+    document.getElementById('formRegister').addEventListener('submit', handleRegister);
+    document.getElementById('formTx').addEventListener('submit', handleCreateTx);
+    document.getElementById('formAccount').addEventListener('submit', handleCreateAccount);
+    document.getElementById('formCategory').addEventListener('submit', handleCreateCategory);
+    document.getElementById('txType').addEventListener('change', updateCategorySelect);
+  });
+
+  // GESTIÓN DE TEMA (CLARO / OSCURO)
+  function initTheme() {
+    const savedTheme = localStorage.getItem('app_theme') || 'dark';
+    document.documentElement.setAttribute('data-theme', savedTheme);
+    updateThemeButton(savedTheme);
+  }
+
+  function toggleTheme() {
+    const currentTheme = document.documentElement.getAttribute('data-theme');
+    const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+    
+    document.documentElement.setAttribute('data-theme', newTheme);
+    localStorage.setItem('app_theme', newTheme);
+    updateThemeButton(newTheme);
+  }
+
+  function updateThemeButton(theme) {
+    const btn = document.getElementById('themeBtn');
+    if (theme === 'dark') {
+      btn.innerHTML = '<i class="fa-solid fa-sun"></i> <span>Claro</span>';
+    } else {
+      btn.innerHTML = '<i class="fa-solid fa-moon"></i> <span>Oscuro</span>';
+    }
+  }
+
+  // FORMATO DE MONEDA
+  function getCurrencySymbol(curr) {
+    const s = { 'PEN': 'S/', 'USD': '$', 'EUR': '€', 'MXN': '$', 'COP': '$' };
+    return s[curr?.toUpperCase()] || curr || 'S/';
+  }
+
+  function formatMoney(amount, curr = 'PEN') {
+    return `${getCurrencySymbol(curr)} ${Number(amount).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  }
+
+  // PETICIONES CON AUTENTICACIÓN
+  async function authFetch(url, options = {}) {
+    options.headers = {
+      ...(options.headers || {}),
+      'Authorization': `Bearer ${jwtToken}`,
+      'Content-Type': 'application/json'
+    };
+
+    const res = await fetch(url, options);
+    if (res.status === 401) {
+      logout();
+      throw new Error('Sesión expirada');
+    }
+    return res;
+  }
+
+  // CARGAR DATOS PRINCIPALES
+  async function initApp() {
+    showLoader(true);
+    try {
+      const res = await authFetch(`${API_BASE}/finance/init`);
+      appData = await res.json();
+
+      // Cabecera Usuario y Hogar
+      document.getElementById('userBadge').querySelector('span').textContent = appData.user.fullName;
+      if (appData.household) {
+        document.getElementById('homeBadge').querySelector('span').textContent = appData.household.name;
+        document.getElementById('homeSwitchGroup').style.display = 'flex';
+      } else {
+        document.getElementById('homeBadge').style.display = 'none';
+        document.getElementById('kpiHomeCard').style.display = 'none';
+        document.getElementById('homeSwitchGroup').style.display = 'none';
+      }
+
+      // KPIs
+      document.getElementById('kpiLiquid').textContent = formatMoney(appData.summary.liquidBalance);
+      document.getElementById('kpiDebt').textContent = formatMoney(appData.summary.creditCardDebt);
+      document.getElementById('kpiIncome').textContent = `+${formatMoney(appData.summary.monthlyIncome)}`;
+      document.getElementById('kpiExpense').textContent = `-${formatMoney(appData.summary.monthlyExpense)}`;
+      document.getElementById('kpiHomeExpense').textContent = formatMoney(appData.summary.householdExpenseThisMonth);
+
+      // Selects y Vistas
+      renderSelects();
+      renderAccountsView();
+      renderCategoriesView();
+      loadTransactions();
+
+      document.getElementById('authOverlay').style.display = 'none';
+    } catch (e) {
+      console.error(e);
+    } finally {
+      showLoader(false);
+    }
+  }
+
+  function renderSelects() {
+    const accSelect = document.getElementById('txAccount');
+    accSelect.innerHTML = appData.accounts.map(a => 
+      `<option value="${a.id}">${a.name} (${formatMoney(a.balance, a.currency)}) ${a.isShared ? '👥' : ''}</option>`
+    ).join('');
+
+    const accTypeSelect = document.getElementById('accType');
+    accTypeSelect.innerHTML = appData.accountTypes.map(t => `<option value="${t.id}">${t.name}</option>`).join('');
+
+    updateCategorySelect();
+  }
+
+  function updateCategorySelect() {
+    const type = document.getElementById('txType').value;
+    const catSelect = document.getElementById('txCategory');
+    const filtered = appData.categories.filter(c => c.type === type);
+    catSelect.innerHTML = filtered.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+  }
+
+  function renderAccountsView() {
+    const list = document.getElementById('accountsList');
+    list.innerHTML = appData.accounts.map(a => {
+      const isTC = a.type.toLowerCase().includes('crédito');
+      return `
+        <div class="item-card">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+            <small style="color:var(--text-muted)">${a.type}</small>
+            ${a.isShared ? '<span class="badge badge-home">Hogar 👥</span>' : ''}
+          </div>
+          <h4>${a.name}</h4>
+          <small style="color:var(--text-muted)">${isTC ? 'Línea Disponible:' : 'Saldo Actual:'}</small>
+          <p style="font-size:1.3rem; font-weight:800; color:${isTC ? 'var(--warning)' : 'var(--primary)'}">
+            ${formatMoney(a.balance, a.currency)}
+          </p>
+        </div>
+      `;
+    }).join('');
+  }
+
+  function renderCategoriesView() {
+    const inList = document.getElementById('catIncomeList');
+    const exList = document.getElementById('catExpenseList');
+
+    inList.innerHTML = appData.categories.filter(c => c.type === 'INCOME').map(c => 
+      `<div class="item-card" style="padding:10px 14px;"><strong>${c.name}</strong></div>`
+    ).join('');
+
+    exList.innerHTML = appData.categories.filter(c => c.type === 'EXPENSE').map(c => 
+      `<div class="item-card" style="padding:10px 14px;"><strong>${c.name}</strong></div>`
+    ).join('');
+  }
+
+  async function loadTransactions() {
+    const res = await authFetch(`${API_BASE}/finance/transactions?scope=${currentScope}&type=${currentTypeFilter}`);
+    const txs = await res.json();
+    const tbody = document.getElementById('txTableBody');
+
+    if (txs.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;">No hay movimientos encontrados.</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = txs.map(t => {
+      const isIncome = t.type === 'INCOME';
+      const badgeClass = isIncome ? 'badge-in' : 'badge-ex';
+      const sign = isIncome ? '+' : '-';
+
+      return `
+        <tr>
+          <td>${t.date}</td>
+          <td>
+            <strong>${t.category}</strong> ${t.isHousehold ? '<span class="badge-home">Hogar</span>' : ''}
+            <br><small style="color:var(--text-muted)">${t.description || '-'}</small>
+          </td>
+          <td>${t.account}</td>
+          <td><small>${t.paidBy}</small></td>
+          <td><span class="badge ${badgeClass}">${sign}${formatMoney(t.amount, t.currency)}</span></td>
+        </tr>
+      `;
+    }).join('');
+  }
+
+  // EVENTOS DE CREACIÓN (POST)
+  async function handleCreateTx(e) {
+    e.preventDefault();
+    const btn = document.getElementById('btnSaveTx');
+    btn.disabled = true;
+
+    const payload = {
+      accountId: parseInt(document.getElementById('txAccount').value),
+      categoryId: parseInt(document.getElementById('txCategory').value),
+      amount: parseFloat(document.getElementById('txAmount').value),
+      transactionType: document.getElementById('txType').value,
+      transactionDate: document.getElementById('txDate').value,
+      description: document.getElementById('txDesc').value,
+      isHouseholdExpense: document.getElementById('txIsHousehold').checked
+    };
+
+    const res = await authFetch(`${API_BASE}/finance/transactions`, {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    });
+
+    if (res.ok) {
+      document.getElementById('txAmount').value = '';
+      document.getElementById('txDesc').value = '';
+      document.getElementById('txIsHousehold').checked = false;
+      await initApp();
+    }
+    btn.disabled = false;
+  }
+
+  async function handleCreateAccount(e) {
+    e.preventDefault();
+    const payload = {
+      name: document.getElementById('accName').value,
+      accountTypeId: parseInt(document.getElementById('accType').value),
+      initialBalance: parseFloat(document.getElementById('accInitial').value),
+      currency: document.getElementById('accCurrency').value.toUpperCase(),
+      isSharedHousehold: document.getElementById('accIsShared').checked
+    };
+
+    const res = await authFetch(`${API_BASE}/finance/accounts`, {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    });
+
+    if (res.ok) {
+      document.getElementById('accName').value = '';
+      document.getElementById('accInitial').value = '0.00';
+      document.getElementById('accIsShared').checked = false;
+      await initApp();
+      alert('Cuenta creada exitosamente.');
+    }
+  }
+
+  async function handleCreateCategory(e) {
+    e.preventDefault();
+    const payload = {
+      name: document.getElementById('catName').value,
+      type: document.getElementById('catType').value,
+      color: '#38bdf8'
+    };
+
+    const res = await authFetch(`${API_BASE}/finance/categories`, {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    });
+
+    if (res.ok) {
+      document.getElementById('catName').value = '';
+      await initApp();
+      alert('Categoría registrada.');
+    }
+  }
+
+  // AUTENTICACIÓN
+  async function handleLogin(e) {
+    e.preventDefault();
+    const btn = document.getElementById('btnLoginSubmit');
+    btn.textContent = 'Verificando...';
+
+    const res = await fetch(`${API_BASE}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: document.getElementById('loginEmail').value,
+        password: document.getElementById('loginPassword').value
+      })
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      localStorage.setItem('token_jwt', data.token);
+      jwtToken = data.token;
+      initApp();
+    } else {
+      alert('Correo o contraseña incorrectos.');
+    }
+    btn.textContent = 'Ingresar';
+  }
+
+  async function handleRegister(e) {
+    e.preventDefault();
+    const btn = document.getElementById('btnRegSubmit');
+    btn.textContent = 'Creando cuenta...';
+
+    const res = await fetch(`${API_BASE}/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        fullName: document.getElementById('regName').value,
+        email: document.getElementById('regEmail').value,
+        password: document.getElementById('regPassword').value,
+        householdName: document.getElementById('regHomeName').value || null,
+        inviteCode: document.getElementById('regInviteCode').value || null
+      })
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      localStorage.setItem('token_jwt', data.token);
+      jwtToken = data.token;
+      initApp();
+    } else {
+      alert('Error en el registro. Verifica los datos o el código.');
+    }
+    btn.textContent = 'Crear Cuenta';
+  }
+
+  function logout() {
+    localStorage.removeItem('token_jwt');
+    jwtToken = null;
+    document.getElementById('authOverlay').style.display = 'flex';
+  }
+
+  // TABS & FILTROS UI
+  function switchTab(id) {
+    document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+    document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+    document.getElementById(id).classList.add('active');
+    event.currentTarget.classList.add('active');
+  }
+
+  function switchAuthTab(type) {
+    document.querySelectorAll('.auth-tab').forEach(b => b.classList.remove('active'));
+    event.currentTarget.classList.add('active');
+    document.getElementById('formLogin').style.display = type === 'login' ? 'block' : 'none';
+    document.getElementById('formRegister').style.display = type === 'register' ? 'block' : 'none';
+  }
+
+  function setScope(scope, btn) {
+    currentScope = scope;
+    btn.parentElement.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    loadTransactions();
+  }
+
+  function setTypeFilter(type, btn) {
+    currentTypeFilter = type;
+    btn.parentElement.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    loadTransactions();
+  }
+
+  function showLoader(show) {
+    document.getElementById('loader').style.display = show ? 'block' : 'none';
+  }
+</script>
+</body>
+</html>
