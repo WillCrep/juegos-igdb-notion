@@ -10,7 +10,7 @@ public static class AuthHelper
 {
     // Clave secreta garantizada de 256 bits (32 caracteres)
     private static readonly byte[] SecretKeyBytes = Encoding.UTF8.GetBytes(
-        Environment.GetEnvironmentVariable("JwtSecret") ?? "ClaveMaestraSeguraFinanzasHogar_2026_Minimo32Caracteres!"
+        Environment.GetEnvironmentVariable("JWT_SECRET") ?? ".Ge?5%OS7N:u+V(5,m#1[6Jelq1P~([6k:/t0}V-#=hncESm8lB~Gl5uZo4Dg,,3"
     );
 
     // =========================================================================
