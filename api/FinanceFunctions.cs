@@ -23,7 +23,7 @@ public class FinanceFunctions
     [Function("GetInitialData")]
     public async Task<HttpResponseData> GetInitialData([HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "finance/init")] HttpRequestData req)
     {
-        var (authUser, errorMsg) = AuthHelper.ValidateToken(req);
+         var (authUser, errorMsg) = await AuthHelper.ValidateTokenAsync(req);
         if (authUser == null)
         {
             var unauth = req.CreateResponse(HttpStatusCode.Unauthorized);
@@ -182,7 +182,7 @@ public class FinanceFunctions
     [Function("CreateTransaction")]
     public async Task<HttpResponseData> CreateTransaction([HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "finance/transactions")] HttpRequestData req)
     {
-        var (authUser, errorMsg) = AuthHelper.ValidateToken(req);
+        var (authUser, errorMsg) = await AuthHelper.ValidateTokenAsync(req);
         if (authUser == null)
         {
             var unauth = req.CreateResponse(HttpStatusCode.Unauthorized);
@@ -277,7 +277,7 @@ public class FinanceFunctions
     [Function("GetAssets")]
     public async Task<HttpResponseData> GetAssets([HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "finance/assets")] HttpRequestData req)
     {
-        var (authUser, errorMsg) = AuthHelper.ValidateToken(req);
+        var (authUser, errorMsg) = await AuthHelper.ValidateTokenAsync(req);
         if (authUser == null)
         {
             var unauth = req.CreateResponse(HttpStatusCode.Unauthorized);
@@ -326,7 +326,7 @@ public class FinanceFunctions
     [Function("CreateAsset")]
     public async Task<HttpResponseData> CreateAsset([HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "finance/assets")] HttpRequestData req)
     {
-        var (authUser, errorMsg) = AuthHelper.ValidateToken(req);
+        var (authUser, errorMsg) = await AuthHelper.ValidateTokenAsync(req);
         if (authUser == null)
         {
             var unauth = req.CreateResponse(HttpStatusCode.Unauthorized);
@@ -374,7 +374,7 @@ public class FinanceFunctions
     [Function("GetSubscriptions")]
     public async Task<HttpResponseData> GetSubscriptions([HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "finance/subscriptions")] HttpRequestData req)
     {
-        var (authUser, errorMsg) = AuthHelper.ValidateToken(req);
+        var (authUser, errorMsg) = await AuthHelper.ValidateTokenAsync(req);
         if (authUser == null)
         {
             var unauth = req.CreateResponse(HttpStatusCode.Unauthorized);
@@ -421,7 +421,7 @@ public class FinanceFunctions
     [Function("CreateSubscription")]
     public async Task<HttpResponseData> CreateSubscription([HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "finance/subscriptions")] HttpRequestData req)
     {
-        var (authUser, errorMsg) = AuthHelper.ValidateToken(req);
+        var (authUser, errorMsg) = await AuthHelper.ValidateTokenAsync(req);
         if (authUser == null)
         {
             var unauth = req.CreateResponse(HttpStatusCode.Unauthorized);
@@ -466,7 +466,7 @@ public class FinanceFunctions
     [Function("GetSavingsGoals")]
     public async Task<HttpResponseData> GetSavingsGoals([HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "finance/goals")] HttpRequestData req)
     {
-        var (authUser, errorMsg) = AuthHelper.ValidateToken(req);
+        var (authUser, errorMsg) = await AuthHelper.ValidateTokenAsync(req);
         if (authUser == null)
         {
             var unauth = req.CreateResponse(HttpStatusCode.Unauthorized);
@@ -511,7 +511,7 @@ public class FinanceFunctions
     [Function("CreateSavingsGoal")]
     public async Task<HttpResponseData> CreateSavingsGoal([HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "finance/goals")] HttpRequestData req)
     {
-        var (authUser, errorMsg) = AuthHelper.ValidateToken(req);
+        var (authUser, errorMsg) = await AuthHelper.ValidateTokenAsync(req);
         if (authUser == null)
         {
             var unauth = req.CreateResponse(HttpStatusCode.Unauthorized);
@@ -555,7 +555,7 @@ public class FinanceFunctions
     [Function("GetHouseholdSettlement")]
     public async Task<HttpResponseData> GetHouseholdSettlement([HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "finance/household/settlement")] HttpRequestData req)
     {
-        var (authUser, errorMsg) = AuthHelper.ValidateToken(req);
+        var (authUser, errorMsg) = await AuthHelper.ValidateTokenAsync(req);
         if (authUser == null)
         {
             var unauth = req.CreateResponse(HttpStatusCode.Unauthorized);
@@ -616,7 +616,7 @@ public class FinanceFunctions
     [Function("CreateAccount")]
     public async Task<HttpResponseData> CreateAccount([HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "finance/accounts")] HttpRequestData req)
     {
-        var (authUser, errorMsg) = AuthHelper.ValidateToken(req);
+        var (authUser, errorMsg) = await AuthHelper.ValidateTokenAsync(req);
         if (authUser == null)
         {
             var unauth = req.CreateResponse(HttpStatusCode.Unauthorized);
@@ -652,7 +652,7 @@ public class FinanceFunctions
     [Function("UpdateAccount")]
     public async Task<HttpResponseData> UpdateAccount([HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "finance/accounts")] HttpRequestData req)
     {
-        var (authUser, errorMsg) = AuthHelper.ValidateToken(req);
+        var (authUser, errorMsg) = await AuthHelper.ValidateTokenAsync(req);
         if (authUser == null)
         {
             var unauth = req.CreateResponse(HttpStatusCode.Unauthorized);
@@ -690,7 +690,7 @@ public class FinanceFunctions
     [Function("DeleteAccount")]
     public async Task<HttpResponseData> DeleteAccount([HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "finance/accounts/{id:int}")] HttpRequestData req, int id)
     {
-        var (authUser, errorMsg) = AuthHelper.ValidateToken(req);
+        var (authUser, errorMsg) = await AuthHelper.ValidateTokenAsync(req);
         if (authUser == null)
         {
             var unauth = req.CreateResponse(HttpStatusCode.Unauthorized);
@@ -719,7 +719,7 @@ public class FinanceFunctions
     [Function("GetTransactions")]
     public async Task<HttpResponseData> GetTransactions([HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "finance/transactions")] HttpRequestData req)
     {
-        var (authUser, errorMsg) = AuthHelper.ValidateToken(req);
+        var (authUser, errorMsg) = await AuthHelper.ValidateTokenAsync(req);
         if (authUser == null)
         {
             var unauth = req.CreateResponse(HttpStatusCode.Unauthorized);
@@ -846,7 +846,7 @@ public class FinanceFunctions
 [Function("CreateCategory")]
     public async Task<HttpResponseData> CreateCategory([HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "finance/categories")] HttpRequestData req)
     {
-        var (authUser, errorMsg) = AuthHelper.ValidateToken(req);
+        var (authUser, errorMsg) = await AuthHelper.ValidateTokenAsync(req);
         if (authUser == null)
         {
             var unauth = req.CreateResponse(HttpStatusCode.Unauthorized);

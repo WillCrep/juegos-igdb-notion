@@ -1,21 +1,17 @@
+using System.Data;
 using System.Security.Cryptography;
 using System.Text;
-using System.Text.Json;
 using FinanceApp.Models;
 using Microsoft.Azure.Functions.Worker.Http;
+using Microsoft.Data.SqlClient;
 
 namespace FinanceApp;
 
 public static class AuthHelper
 {
-    // Clave secreta garantizada de 256 bits (32 caracteres)
-    private static readonly byte[] SecretKeyBytes = Encoding.UTF8.GetBytes(
-        Environment.GetEnvironmentVariable("JWT_SECRET") ?? ".Ge?5%OS7N:u+V(5,m#1[6Jelq1P~([6k:/t0}V-#=hncESm8lB~Gl5uZo4Dg,,3"
-    );
+    private static readonly string ConnectionString = Environment.GetEnvironmentVariable("SQL_CONNECTION_STRING") ?? string.Empty;
 
-    // =========================================================================
     // 1. HASH Y VERIFICACIÓN DE CONTRASEÑA (PBKDF2 NATIVO)
-    // =========================================================================
     public static string HashPassword(string password)
     {
         byte[] salt = RandomNumberGenerator.GetBytes(16);
@@ -48,52 +44,31 @@ public static class AuthHelper
         return CryptographicOperations.FixedTimeEquals(originalHash, newHash);
     }
 
-    // =========================================================================
-    // 2. GENERADOR DE JWT ESTÁNDAR (RFC 7519 NATIVO CON HMAC-SHA256)
-    // =========================================================================
-    public static string GenerateJwtToken(int userId, string email, string fullName, int? householdId, string? householdName, string role)
+    // 2. CREAR TOKEN DE SESIÓN EN BASE DE DATOS
+    public static async Task<string> CreateSessionTokenAsync(SqlConnection conn, SqlTransaction? tx, int userId)
     {
-        // Header
-        var headerJson = JsonSerializer.Serialize(new { alg = "HS256", typ = "JWT" });
-        var headerBase64 = Base64UrlEncode(Encoding.UTF8.GetBytes(headerJson));
+        // Genera un token aleatorio seguro de 64 caracteres hexadecimales
+        byte[] randomBytes = RandomNumberGenerator.GetBytes(32);
+        string token = Convert.ToHexString(randomBytes).ToLower();
 
-        // Payload
-        var payloadDict = new Dictionary<string, object>
-        {
-            { "userId", userId },
-            { "email", email },
-            { "name", fullName },
-            { "role", role },
-            { "exp", DateTimeOffset.UtcNow.AddDays(30).ToUnixTimeSeconds() },
-            { "iat", DateTimeOffset.UtcNow.ToUnixTimeSeconds() }
-        };
+        var sql = @"
+            INSERT INTO BnkUserTokens (UserId, Token, ExpiresAt)
+            VALUES (@UserId, @Token, DATEADD(DAY, 60, SYSUTCDATETIME()));";
 
-        if (householdId.HasValue)
-        {
-            payloadDict["householdId"] = householdId.Value;
-            payloadDict["householdName"] = householdName ?? string.Empty;
-        }
+        using var cmd = new SqlCommand(sql, conn, tx);
+        cmd.Parameters.Add("@UserId", SqlDbType.Int).Value = userId;
+        cmd.Parameters.Add("@Token", SqlDbType.NVarChar).Value = token;
 
-        var payloadJson = JsonSerializer.Serialize(payloadDict);
-        var payloadBase64 = Base64UrlEncode(Encoding.UTF8.GetBytes(payloadJson));
-
-        // Firma HMAC-SHA256
-        var dataToSign = $"{headerBase64}.{payloadBase64}";
-        using var hmac = new HMACSHA256(SecretKeyBytes);
-        var signatureBytes = hmac.ComputeHash(Encoding.UTF8.GetBytes(dataToSign));
-        var signatureBase64 = Base64UrlEncode(signatureBytes);
-
-        return $"{dataToSign}.{signatureBase64}";
+        await cmd.ExecuteNonQueryAsync();
+        return token;
     }
 
-    // =========================================================================
-    // 3. VALIDADOR DE JWT NATIVO (100% INMUNE A CONFLICTOS DE AZURE)
-    // =========================================================================
-    public static (AuthenticatedUser? User, string? Error) ValidateToken(HttpRequestData req)
+    // 3. VALIDAR TOKEN EN BASE DE DATOS (100% PRECISO Y DIRECTO)
+    public static async Task<(AuthenticatedUser? User, string? Error)> ValidateTokenAsync(HttpRequestData req)
     {
         string? token = null;
 
-        // Leer de Authorization
+        // Leer de Authorization: Bearer <token>
         if (req.Headers.TryGetValues("Authorization", out var authHeaders))
         {
             var h = authHeaders.FirstOrDefault();
@@ -108,71 +83,42 @@ public static class AuthHelper
         }
 
         if (string.IsNullOrEmpty(token))
-            return (null, "No se encontró token en Authorization ni en x-access-token.");
+            return (null, "No se proporcionó token en las cabeceras.");
 
-        var parts = token.Split('.');
-        if (parts.Length != 3)
-            return (null, "Formato JWT inválido (se esperaban 3 partes).");
-
-        // 1. Validar Firma Criptográfica
-        var dataToSign = $"{parts[0]}.{parts[1]}";
-        using var hmac = new HMACSHA256(SecretKeyBytes);
-        var expectedSignatureBytes = hmac.ComputeHash(Encoding.UTF8.GetBytes(dataToSign));
-        var expectedSignature = Base64UrlEncode(expectedSignatureBytes);
-
-        var actualSignatureBytes = Encoding.UTF8.GetBytes(parts[2]);
-        var expectedBytes = Encoding.UTF8.GetBytes(expectedSignature);
-
-        if (!CryptographicOperations.FixedTimeEquals(actualSignatureBytes, expectedBytes))
-        {
-            return (null, "Firma del token no coincide con el servidor.");
-        }
-
-        // 2. Decodificar Payload y Validar Expiración
         try
         {
-            var payloadJson = Encoding.UTF8.GetString(Base64UrlDecode(parts[1]));
-            var claims = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(payloadJson);
-            if (claims == null) return (null, "Payload de token corrupto.");
+            using var conn = new SqlConnection(ConnectionString);
+            await conn.OpenAsync();
 
-            if (claims.TryGetValue("exp", out var expElement) && expElement.TryGetInt64(out var exp))
+            var sql = @"
+                SELECT u.UserId, u.Email, u.FullName, hm.HouseholdId, h.Name AS HouseholdName, ISNULL(hm.Role, 'MEMBER') AS Role
+                FROM BnkUserTokens t
+                INNER JOIN BnkUsers u ON t.UserId = u.UserId
+                LEFT JOIN BnkHouseholdMembers hm ON u.UserId = hm.UserId
+                LEFT JOIN BnkHouseholds h ON hm.HouseholdId = h.HouseholdId
+                WHERE t.Token = @Token AND t.ExpiresAt > SYSUTCDATETIME() AND t.IsRevoked = 0";
+
+            using var cmd = new SqlCommand(sql, conn);
+            cmd.Parameters.Add("@Token", SqlDbType.NVarChar).Value = token;
+
+            using var reader = await cmd.ExecuteReaderAsync();
+            if (await reader.ReadAsync())
             {
-                var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-                if (now > exp)
-                    return (null, "El token ha expirado.");
+                var userId = reader.GetInt32(0);
+                var email = reader.GetString(1);
+                var fullName = reader.GetString(2);
+                int? householdId = reader.IsDBNull(3) ? null : reader.GetInt32(3);
+                string? householdName = reader.IsDBNull(4) ? null : reader.GetString(4);
+                string role = reader.GetString(5);
+
+                return (new AuthenticatedUser(userId, email, fullName, householdId, householdName, role), null);
             }
 
-            int userId = claims["userId"].GetInt32();
-            string email = claims.TryGetValue("email", out var e) ? e.GetString() ?? "" : "";
-            string name = claims.TryGetValue("name", out var n) ? n.GetString() ?? "" : "";
-            string role = claims.TryGetValue("role", out var r) ? r.GetString() ?? "MEMBER" : "MEMBER";
-
-            int? householdId = null;
-            if (claims.TryGetValue("householdId", out var hid) && hid.ValueKind == JsonValueKind.Number)
-                householdId = hid.GetInt32();
-
-            string? householdName = claims.TryGetValue("householdName", out var hn) ? hn.GetString() : null;
-
-            return (new AuthenticatedUser(userId, email, name, householdId, householdName, role), null);
+            return (null, "Token de sesión inválido, revocado o expirado.");
         }
         catch (Exception ex)
         {
-            return (null, $"Error decodificando claims: {ex.Message}");
+            return (null, $"Error al verificar sesión en BD: {ex.Message}");
         }
-    }
-
-    // Helpers Base64URL según RFC 7515
-    private static string Base64UrlEncode(byte[] bytes) =>
-        Convert.ToBase64String(bytes).Replace("+", "-").Replace("/", "_").TrimEnd('=');
-
-    private static byte[] Base64UrlDecode(string input)
-    {
-        var output = input.Replace('-', '+').Replace('_', '/');
-        switch (output.Length % 4)
-        {
-            case 2: output += "=="; break;
-            case 3: output += "="; break;
-        }
-        return Convert.FromBase64String(output);
     }
 }

@@ -121,7 +121,8 @@ public class AuthFunctions
 
             tx.Commit();
 
-            var token = AuthHelper.GenerateJwtToken(userId, dto.Email, dto.FullName, householdId, householdName, role);
+            
+            var token = await AuthHelper.CreateSessionTokenAsync(conn, tx, userId);
             var res = req.CreateResponse(HttpStatusCode.Created);
             await res.WriteAsJsonAsync(new { token, user = new { userId, fullName = dto.FullName, email = dto.Email }, household = new { householdId, name = householdName, role } });
             return res;
@@ -170,9 +171,13 @@ public class AuthFunctions
 
             if (AuthHelper.VerifyPassword(dto.Password, storedHash))
             {
-                var token = AuthHelper.GenerateJwtToken(userId, dto.Email, fullName, householdId, householdName, role);
+                var token = await AuthHelper.CreateSessionTokenAsync(conn, null, userId);
                 var res = req.CreateResponse(HttpStatusCode.OK);
-                await res.WriteAsJsonAsync(new { token, user = new { userId, fullName, email = dto.Email }, household = new { householdId, name = householdName, role } });
+                await res.WriteAsJsonAsync(new { 
+                    token, 
+                    user = new { userId, fullName, email = dto.Email }, 
+                    household = new { householdId, name = householdName, role } 
+                });
                 return res;
             }
         }
