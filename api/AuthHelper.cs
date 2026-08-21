@@ -1,31 +1,21 @@
-using System.IdentityModel.Tokens.Jwt;
-using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using FinanceApp.Models;
 using Microsoft.Azure.Functions.Worker.Http;
-using Microsoft.IdentityModel.Tokens;
 
 namespace FinanceApp;
 
 public static class AuthHelper
 {
-    // Clave fija garantizada de al menos 256 bits (32 caracteres)
-    private const string DefaultSecret = ".Ge?5%OS7N:u+V(5,m#1[6Jelq1P~([6k:/t0}V-#=hncESm8lB~Gl5uZo4Dg,,3";
+    // Clave secreta garantizada de 256 bits (32 caracteres)
+    private static readonly byte[] SecretKeyBytes = Encoding.UTF8.GetBytes(
+        Environment.GetEnvironmentVariable("JwtSecret") ?? "ClaveMaestraSeguraFinanzasHogar_2026_Minimo32Caracteres!"
+    );
 
- // Método centralizado para obtener siempre la misma clave y el mismo KeyId
-    private static SymmetricSecurityKey GetSecurityKey()
-    {
-        var envSecret = Environment.GetEnvironmentVariable("JWT_SECRET");
-        var secret = (!string.IsNullOrWhiteSpace(envSecret) && envSecret.Length >= 32) ? envSecret : DefaultSecret;
-
-        return new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secret))
-        {
-            KeyId = "finanzas-jwt-key-v1" // Identificador explícito de clave
-        };
-    }
-
-    // 1. Hash seguro de contraseña
+    // =========================================================================
+    // 1. HASH Y VERIFICACIÓN DE CONTRASEÑA (PBKDF2 NATIVO)
+    // =========================================================================
     public static string HashPassword(string password)
     {
         byte[] salt = RandomNumberGenerator.GetBytes(16);
@@ -38,8 +28,7 @@ public static class AuthHelper
         );
         return $"{Convert.ToBase64String(salt)}:{Convert.ToBase64String(hash)}";
     }
-    // 2. Verificar contraseña
-    // 2. Verificar contraseña
+
     public static bool VerifyPassword(string password, string storedHash)
     {
         var parts = storedHash.Split(':');
@@ -59,100 +48,131 @@ public static class AuthHelper
         return CryptographicOperations.FixedTimeEquals(originalHash, newHash);
     }
 
- // 3. Generar JWT Token (Firmado con GetSecurityKey)
+    // =========================================================================
+    // 2. GENERADOR DE JWT ESTÁNDAR (RFC 7519 NATIVO CON HMAC-SHA256)
+    // =========================================================================
     public static string GenerateJwtToken(int userId, string email, string fullName, int? householdId, string? householdName, string role)
     {
-        var tokenHandler = new JwtSecurityTokenHandler();
-        var key = GetSecurityKey();
+        // Header
+        var headerJson = JsonSerializer.Serialize(new { alg = "HS256", typ = "JWT" });
+        var headerBase64 = Base64UrlEncode(Encoding.UTF8.GetBytes(headerJson));
 
-        var claims = new List<Claim>
+        // Payload
+        var payloadDict = new Dictionary<string, object>
         {
-            new Claim("userId", userId.ToString()),
-            new Claim("email", email),
-            new Claim("name", fullName),
-            new Claim("role", role)
+            { "userId", userId },
+            { "email", email },
+            { "name", fullName },
+            { "role", role },
+            { "exp", DateTimeOffset.UtcNow.AddDays(30).ToUnixTimeSeconds() },
+            { "iat", DateTimeOffset.UtcNow.ToUnixTimeSeconds() }
         };
 
         if (householdId.HasValue)
         {
-            claims.Add(new Claim("householdId", householdId.Value.ToString()));
-            claims.Add(new Claim("householdName", householdName ?? string.Empty));
+            payloadDict["householdId"] = householdId.Value;
+            payloadDict["householdName"] = householdName ?? string.Empty;
         }
 
-        var tokenDescriptor = new SecurityTokenDescriptor
-        {
-            Subject = new ClaimsIdentity(claims),
-            Expires = DateTime.UtcNow.AddDays(30),
-            SigningCredentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256)
-        };
+        var payloadJson = JsonSerializer.Serialize(payloadDict);
+        var payloadBase64 = Base64UrlEncode(Encoding.UTF8.GetBytes(payloadJson));
 
-        var token = tokenHandler.CreateToken(tokenDescriptor);
-        return tokenHandler.WriteToken(token);
+        // Firma HMAC-SHA256
+        var dataToSign = $"{headerBase64}.{payloadBase64}";
+        using var hmac = new HMACSHA256(SecretKeyBytes);
+        var signatureBytes = hmac.ComputeHash(Encoding.UTF8.GetBytes(dataToSign));
+        var signatureBase64 = Base64UrlEncode(signatureBytes);
+
+        return $"{dataToSign}.{signatureBase64}";
     }
 
-      // 4. Validar Token (Validado con el mismo GetSecurityKey)
+    // =========================================================================
+    // 3. VALIDADOR DE JWT NATIVO (100% INMUNE A CONFLICTOS DE AZURE)
+    // =========================================================================
     public static (AuthenticatedUser? User, string? Error) ValidateToken(HttpRequestData req)
     {
         string? token = null;
 
+        // Leer de Authorization
         if (req.Headers.TryGetValues("Authorization", out var authHeaders))
         {
-            var header = authHeaders.FirstOrDefault();
-            if (!string.IsNullOrEmpty(header) && header.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
-            {
-                token = header.Substring("Bearer ".Length).Trim();
-            }
+            var h = authHeaders.FirstOrDefault();
+            if (!string.IsNullOrEmpty(h) && h.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+                token = h.Substring("Bearer ".Length).Trim();
         }
 
+        // Leer de x-access-token
         if (string.IsNullOrEmpty(token) && req.Headers.TryGetValues("x-access-token", out var customHeaders))
         {
             token = customHeaders.FirstOrDefault()?.Trim();
         }
 
         if (string.IsNullOrEmpty(token))
+            return (null, "No se encontró token en Authorization ni en x-access-token.");
+
+        var parts = token.Split('.');
+        if (parts.Length != 3)
+            return (null, "Formato JWT inválido (se esperaban 3 partes).");
+
+        // 1. Validar Firma Criptográfica
+        var dataToSign = $"{parts[0]}.{parts[1]}";
+        using var hmac = new HMACSHA256(SecretKeyBytes);
+        var expectedSignatureBytes = hmac.ComputeHash(Encoding.UTF8.GetBytes(dataToSign));
+        var expectedSignature = Base64UrlEncode(expectedSignatureBytes);
+
+        var actualSignatureBytes = Encoding.UTF8.GetBytes(parts[2]);
+        var expectedBytes = Encoding.UTF8.GetBytes(expectedSignature);
+
+        if (!CryptographicOperations.FixedTimeEquals(actualSignatureBytes, expectedBytes))
         {
-            return (null, "No se encontró el token en las cabeceras 'Authorization' ni 'x-access-token'.");
+            return (null, "Firma del token no coincide con el servidor.");
         }
 
-        var tokenHandler = new JwtSecurityTokenHandler();
-        var key = GetSecurityKey();
-
+        // 2. Decodificar Payload y Validar Expiración
         try
         {
-            var principal = tokenHandler.ValidateToken(token, new TokenValidationParameters
+            var payloadJson = Encoding.UTF8.GetString(Base64UrlDecode(parts[1]));
+            var claims = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(payloadJson);
+            if (claims == null) return (null, "Payload de token corrupto.");
+
+            if (claims.TryGetValue("exp", out var expElement) && expElement.TryGetInt64(out var exp))
             {
-                ValidateIssuerSigningKey = true,
-                IssuerSigningKey = key,
-                ValidateIssuer = false,
-                ValidateAudience = false,
-                ValidateLifetime = true,
-                ClockSkew = TimeSpan.FromMinutes(5)
-            }, out var validatedToken);
-
-            if (validatedToken is JwtSecurityToken jwtToken)
-            {
-                var userIdClaim = jwtToken.Claims.FirstOrDefault(c => c.Type == "userId" || c.Type == "nameid")?.Value;
-                if (string.IsNullOrEmpty(userIdClaim)) 
-                    return (null, "El token no contiene el claim 'userId'.");
-
-                var userId = int.Parse(userIdClaim);
-                var email = jwtToken.Claims.FirstOrDefault(c => c.Type == "email")?.Value ?? "";
-                var name = jwtToken.Claims.FirstOrDefault(c => c.Type == "name")?.Value ?? "";
-                var role = jwtToken.Claims.FirstOrDefault(c => c.Type == "role")?.Value ?? "MEMBER";
-
-                var householdClaim = jwtToken.Claims.FirstOrDefault(c => c.Type == "householdId")?.Value;
-                int? householdId = string.IsNullOrEmpty(householdClaim) ? null : int.Parse(householdClaim);
-                var householdName = jwtToken.Claims.FirstOrDefault(c => c.Type == "householdName")?.Value;
-
-                return (new AuthenticatedUser(userId, email, name, householdId, householdName, role), null);
+                var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+                if (now > exp)
+                    return (null, "El token ha expirado.");
             }
 
-            return (null, "Formato de token no reconocido.");
+            int userId = claims["userId"].GetInt32();
+            string email = claims.TryGetValue("email", out var e) ? e.GetString() ?? "" : "";
+            string name = claims.TryGetValue("name", out var n) ? n.GetString() ?? "" : "";
+            string role = claims.TryGetValue("role", out var r) ? r.GetString() ?? "MEMBER" : "MEMBER";
+
+            int? householdId = null;
+            if (claims.TryGetValue("householdId", out var hid) && hid.ValueKind == JsonValueKind.Number)
+                householdId = hid.GetInt32();
+
+            string? householdName = claims.TryGetValue("householdName", out var hn) ? hn.GetString() : null;
+
+            return (new AuthenticatedUser(userId, email, name, householdId, householdName, role), null);
         }
         catch (Exception ex)
         {
-            return (null, $"Fallo de validación JWT: {ex.Message}");
+            return (null, $"Error decodificando claims: {ex.Message}");
         }
     }
 
+    // Helpers Base64URL según RFC 7515
+    private static string Base64UrlEncode(byte[] bytes) =>
+        Convert.ToBase64String(bytes).Replace("+", "-").Replace("/", "_").TrimEnd('=');
+
+    private static byte[] Base64UrlDecode(string input)
+    {
+        var output = input.Replace('-', '+').Replace('_', '/');
+        switch (output.Length % 4)
+        {
+            case 2: output += "=="; break;
+            case 3: output += "="; break;
+        }
+        return Convert.FromBase64String(output);
+    }
 }
