@@ -77,12 +77,12 @@ public static class AuthHelper
         return tokenHandler.WriteToken(token);
     }
 
-    // 4. VALIDAR TOKEN EN CADA PETICIÓN HTTP (SOPORTE DUAL DE HEADERS)
-    public static AuthenticatedUser? ValidateToken(HttpRequestData req)
+    // 4. Validar Token y devolver motivo en caso de error
+    public static (AuthenticatedUser? User, string? Error) ValidateToken(HttpRequestData req)
     {
         string? token = null;
 
-        // 1. Intentar leer de la cabecera estándar Authorization
+        // Intentar leer de Authorization
         if (req.Headers.TryGetValues("Authorization", out var authHeaders))
         {
             var header = authHeaders.FirstOrDefault();
@@ -92,22 +92,18 @@ public static class AuthHelper
             }
         }
 
-        // 2. Si Azure filtró Authorization, leer de x-access-token
+        // Intentar leer de x-access-token
         if (string.IsNullOrEmpty(token) && req.Headers.TryGetValues("x-access-token", out var customHeaders))
         {
             token = customHeaders.FirstOrDefault()?.Trim();
         }
 
-        // Si no vino en ninguna cabecera, rechazar
         if (string.IsNullOrEmpty(token))
         {
-            Console.WriteLine("[AUTH] No se encontró token en Authorization ni en x-access-token");
-            return null;
+            return (null, "No se encontró el token en las cabeceras 'Authorization' ni 'x-access-token'.");
         }
 
         var tokenHandler = new JwtSecurityTokenHandler();
-        tokenHandler.InboundClaimTypeMap.Clear();
-
         var key = Encoding.UTF8.GetBytes(JwtSecret);
 
         try
@@ -118,27 +114,34 @@ public static class AuthHelper
                 IssuerSigningKey = new SymmetricSecurityKey(key),
                 ValidateIssuer = false,
                 ValidateAudience = false,
-                ClockSkew = TimeSpan.Zero
-            }, out _);
+                ValidateLifetime = true,
+                ClockSkew = TimeSpan.FromMinutes(5) // 👈 Tolerancia de 5 min para evitar fallos por milisegundos
+            }, out var validatedToken);
 
-            var userIdClaim = principal.FindFirst("userId")?.Value;
-            if (string.IsNullOrEmpty(userIdClaim)) return null;
+            // Leer los claims de forma segura desde el JWT validado
+            if (validatedToken is JwtSecurityToken jwtToken)
+            {
+                var userIdClaim = jwtToken.Claims.FirstOrDefault(c => c.Type == "userId" || c.Type == "nameid")?.Value;
+                if (string.IsNullOrEmpty(userIdClaim)) 
+                    return (null, "El token no contiene el claim 'userId'.");
 
-            var userId = int.Parse(userIdClaim);
-            var email = principal.FindFirst("email")?.Value ?? "";
-            var name = principal.FindFirst("name")?.Value ?? "";
-            var role = principal.FindFirst("role")?.Value ?? "MEMBER";
-            
-            var householdClaim = principal.FindFirst("householdId")?.Value;
-            int? householdId = string.IsNullOrEmpty(householdClaim) ? null : int.Parse(householdClaim);
-            var householdName = principal.FindFirst("householdName")?.Value;
+                var userId = int.Parse(userIdClaim);
+                var email = jwtToken.Claims.FirstOrDefault(c => c.Type == "email")?.Value ?? "";
+                var name = jwtToken.Claims.FirstOrDefault(c => c.Type == "name")?.Value ?? "";
+                var role = jwtToken.Claims.FirstOrDefault(c => c.Type == "role")?.Value ?? "MEMBER";
 
-            return new AuthenticatedUser(userId, email, name, householdId, householdName, role);
+                var householdClaim = jwtToken.Claims.FirstOrDefault(c => c.Type == "householdId")?.Value;
+                int? householdId = string.IsNullOrEmpty(householdClaim) ? null : int.Parse(householdClaim);
+                var householdName = jwtToken.Claims.FirstOrDefault(c => c.Type == "householdName")?.Value;
+
+                return (new AuthenticatedUser(userId, email, name, householdId, householdName, role), null);
+            }
+
+            return (null, "Formato de token no reconocido.");
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[AUTH ERROR] Falló validación de firma: {ex.Message}");
-            return null;
+            return (null, $"Fallo de validación JWT: {ex.Message}");
         }
     }
 }
