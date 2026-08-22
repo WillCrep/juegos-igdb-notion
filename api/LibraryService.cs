@@ -369,6 +369,67 @@ public sealed class LibraryService
             FROM Catalog c ORDER BY c.SequenceNumber, c.Name;
             """, connection); gamesCommand.Parameters.AddWithValue("@id", id); await using var reader = await gamesCommand.ExecuteReaderAsync(); var games = new List<SeriesGame>(); while (await reader.ReadAsync()) games.Add(new SeriesGame(reader.GetInt32(0), reader.GetString(1), reader.IsDBNull(2) ? null : reader.GetString(2), reader.GetString(3), reader.GetBoolean(4))); return series with { Games = games };
     }
+
+    public async Task<bool> DeleteGameAsync(int id)
+    {
+        await using var connection = OpenConnection();
+        await connection.OpenAsync();
+        await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync();
+        try
+        {
+            await using var command = new SqlCommand("""
+                -- 1. Eliminar asociaciones de DLCs con copias de este juego o DLCs de este juego
+                DELETE cdlc FROM dbo.CollectionEntryDlcs cdlc 
+                JOIN dbo.CollectionEntries ce ON ce.Id = cdlc.CollectionEntryId 
+                WHERE ce.GameId = @id;
+
+                DELETE cdlc FROM dbo.CollectionEntryDlcs cdlc 
+                JOIN dbo.Dlc d ON d.Id = cdlc.DlcId 
+                WHERE d.BaseGameId = @id;
+
+                -- 2. Eliminar DLCs asociados al juego base
+                DELETE FROM dbo.Dlc WHERE BaseGameId = @id;
+
+                -- 3. Eliminar copias de la colección
+                DELETE FROM dbo.CollectionEntries WHERE GameId = @id;
+
+                -- 4. Eliminar progreso de logros del usuario vinculados al juego
+                DELETE ua FROM dbo.UserAchievements ua 
+                JOIN dbo.Achievements a ON a.Id = ua.AchievementId 
+                JOIN dbo.AchievementSets aset ON aset.Id = a.AchievementSetId 
+                WHERE aset.GameId = @id;
+
+                -- 5. Eliminar logros y conjuntos de logros
+                DELETE a FROM dbo.Achievements a 
+                JOIN dbo.AchievementSets aset ON aset.Id = a.AchievementSetId 
+                WHERE aset.GameId = @id;
+
+                DELETE FROM dbo.AchievementSets WHERE GameId = @id;
+
+                -- 6. Eliminar vínculos de plataformas y series
+                DELETE FROM dbo.GamePlatforms WHERE GameId = @id;
+                DELETE FROM dbo.GameSeries WHERE GameId = @id;
+
+                -- 7. Eliminar el registro del juego
+                DELETE FROM dbo.Games WHERE Id = @id;
+
+                -- 8. Limpiar series huérfanas que se hayan quedado sin juegos
+                DELETE s FROM dbo.Series s 
+                WHERE NOT EXISTS (SELECT 1 FROM dbo.GameSeries gs WHERE gs.SeriesId = s.Id) 
+                  AND NOT EXISTS (SELECT 1 FROM dbo.SeriesTitles st WHERE st.SeriesId = s.Id);
+            """, connection, transaction);
+
+            command.Parameters.AddWithValue("@id", id);
+            var rows = await command.ExecuteNonQueryAsync();
+            await transaction.CommitAsync();
+            return rows > 0;
+        }
+        catch
+        {
+            await transaction.RollbackAsync();
+            throw;
+        }
+    }
 }
 
 public sealed record LibraryStats(int Games, int Owned, int Series, int Achievements, int Unlocked);

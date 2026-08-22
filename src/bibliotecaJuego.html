@@ -755,6 +755,7 @@
           <button class="btn btn-primary" onclick="openAddCopyModal(${g.id})"><i class="fa-solid fa-plus"></i> Añadir Copia</button>
           <button class="btn btn-secondary" onclick="refreshIgdb(${g.id})"><i class="fa-solid fa-arrows-rotate"></i> Actualizar IGDB</button>
           <button class="btn btn-secondary" onclick="toggleEditPanel()"><i class="fa-solid fa-pen"></i> Editar Estado / Notas</button>
+          <button class="btn btn-danger" onclick="deleteGamePermanently(${g.id}, '${escapeAttr(g.name)}')"><i class="fa-solid fa-trash-can"></i> Eliminar Juego</button>
           ${g.igdbUrl ? `<a href="${escapeAttr(g.igdbUrl)}" target="_blank" class="btn btn-secondary"><i class="fa-solid fa-arrow-up-right-from-square"></i> IGDB</a>` : ''}
         </div>
 
@@ -1115,6 +1116,33 @@
       showToast(`${res.imported} logros importados correctamente`);
       loadGameAchievements(gameId);
       loadStats();
+    } catch (e) {
+      hideLoading();
+      showToast(e.message, 'error');
+    }
+  }
+
+  // ================= ELIMINAR JUEGO FÍSICAMENTE =================
+  async function deleteGamePermanently(id, name) {
+    const confirmation = prompt(
+      `⚠️ ATENCIÓN: Esta acción eliminará PERMANENTEMENTE "${name}" de la Base de Datos.\n\n` +
+      `Se borrarán todas sus copias, DLCs, logros y registros vinculados.\n\n` +
+      `Escribe "ELIMINAR" para confirmar:`
+    );
+
+    if (confirmation !== 'ELIMINAR') {
+      if (confirmation !== null) showToast('Operación cancelada', 'info');
+      return;
+    }
+
+    showLoading('Eliminando Juego', 'Borrando el título y sus dependencias de Azure SQL...');
+    try {
+      await apiFetch(`/library/games/${id}`, { method: 'DELETE' });
+      hideLoading();
+      document.getElementById('gameDetailModal').close();
+      showToast('Juego eliminado permanentemente de la BD');
+      loadStats();
+      loadGames();
     } catch (e) {
       hideLoading();
       showToast(e.message, 'error');

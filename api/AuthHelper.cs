@@ -95,7 +95,8 @@ public static class AuthHelper
             await conn.OpenAsync();
 
             var sql = @"
-                SELECT u.UserId, u.Email, u.FullName, hm.HouseholdId, h.Name AS HouseholdName, ISNULL(hm.Role, 'MEMBER') AS Role
+                SELECT u.UserId, u.Email, u.FullName, hm.HouseholdId, h.Name AS HouseholdName, ISNULL(hm.Role, 'MEMBER') AS Role, 
+                h.InviteCode
                 FROM BnkUserTokens t
                 INNER JOIN BnkUsers u ON t.UserId = u.UserId
                 LEFT JOIN BnkHouseholdMembers hm ON u.UserId = hm.UserId
@@ -114,8 +115,9 @@ public static class AuthHelper
                 int? householdId = reader.IsDBNull(3) ? null : reader.GetInt32(3);
                 string? householdName = reader.IsDBNull(4) ? null : reader.GetString(4);
                 string role = reader.GetString(5);
+                string? inviteCode = reader.IsDBNull(6) ? null : reader.GetString(6); 
 
-                return (new AuthenticatedUser(userId, email, fullName, householdId, householdName, role), null);
+                return (new AuthenticatedUser(userId, email, fullName, householdId, householdName, role, inviteCode), null);
             }
 
             return (null, "Token de sesión no encontrado en BD o expirado.");

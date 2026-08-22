@@ -98,10 +98,14 @@ public sealed class IgdbClient
               collection.id,collection.name,collection.url,collection.games.id,collection.games.name,collections,
               franchise.id,franchise.name,franchise.url,franchises.id,franchises.name,franchises.url,
               involved_companies.company.name,involved_companies.developer,involved_companies.publisher,
-              rating,aggregated_rating,dlcs.id,dlcs.name,dlcs.first_release_date,dlcs.platforms.name,dlcs.url,
+              rating,aggregated_rating,
+              dlcs.id,dlcs.name,dlcs.first_release_date,dlcs.platforms.name,dlcs.url,
               expansions.id,expansions.name,expansions.first_release_date,expansions.platforms.name,expansions.url,
               standalone_expansions.id,standalone_expansions.name,standalone_expansions.first_release_date,standalone_expansions.platforms.name,standalone_expansions.url,
               bundles.id,bundles.name,bundles.first_release_date,bundles.platforms.name,bundles.url,
+              episodes.id,episodes.name,episodes.first_release_date,episodes.platforms.name,episodes.url,
+              seasons.id,seasons.name,seasons.first_release_date,seasons.platforms.name,seasons.url,
+              packs.id,packs.name,packs.first_release_date,packs.platforms.name,packs.url,
               version_parent,version_title,screenshots.image_id,artworks.image_id,videos.video_id,videos.name,url;
             where id = {id};
             """;

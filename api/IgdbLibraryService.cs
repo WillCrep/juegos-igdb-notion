@@ -21,15 +21,27 @@ public sealed class IgdbLibraryService
         )).ToList();
     }
 
-    public async Task<int> ImportAsync(int igdbId)
+public async Task<int> ImportAsync(int igdbId)
     {
         if (string.IsNullOrWhiteSpace(connectionString)) throw new InvalidOperationException("SQL_CONNECTION_STRING no está configurada.");
         using var document = await igdb.GetGameAsync(igdbId);
         var game = document.RootElement.EnumerateArray().FirstOrDefault();
         if (game.ValueKind != JsonValueKind.Object) throw new InvalidOperationException("IGDB no devolvió el juego seleccionado.");
+        
         using var collectionsDocument = await igdb.GetCollectionsAsync(GetReferenceIds(game, "collections"));
         using var collectionGamesDocument = await igdb.GetRelatedGamesAsync(collectionsDocument.RootElement.ValueKind == JsonValueKind.Array ? collectionsDocument.RootElement.EnumerateArray().SelectMany(x => GetReferenceIds(x, "games")) : []);
-        using var relatedGamesDocument = await igdb.GetRelatedGamesAsync(GetReferenceIds(game, "dlcs").Concat(GetReferenceIds(game, "expansions")).Concat(GetReferenceIds(game, "standalone_expansions")).Concat(GetReferenceIds(game, "bundles")));
+        
+        // Incluimos dlcs, expansions, standalone, bundles, episodes, seasons y packs
+        var allRelatedIds = GetReferenceIds(game, "dlcs")
+            .Concat(GetReferenceIds(game, "expansions"))
+            .Concat(GetReferenceIds(game, "standalone_expansions"))
+            .Concat(GetReferenceIds(game, "bundles"))
+            .Concat(GetReferenceIds(game, "episodes"))
+            .Concat(GetReferenceIds(game, "seasons"))
+            .Concat(GetReferenceIds(game, "packs"));
+
+        using var relatedGamesDocument = await igdb.GetRelatedGamesAsync(allRelatedIds);
+        
         await using var connection = new SqlConnection(connectionString); await connection.OpenAsync(); await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync();
         try
         {
@@ -39,17 +51,64 @@ public sealed class IgdbLibraryService
             var url = game.TryGetProperty("url", out var urlValue) ? urlValue.GetString() : null;
             DateTime? release = game.TryGetProperty("first_release_date", out var releaseValue) && releaseValue.ValueKind == JsonValueKind.Number ? DateTimeOffset.FromUnixTimeSeconds(releaseValue.GetInt64()).UtcDateTime.Date : null;
             decimal? rating = game.TryGetProperty("rating", out var ratingValue) && ratingValue.ValueKind == JsonValueKind.Number ? ratingValue.GetDecimal() : null;
+            
             int gameId;
-            await using (var find = new SqlCommand("SELECT Id FROM dbo.Games WHERE IgdbId=@id", connection, transaction)) { find.Parameters.AddWithValue("@id", igdbId); var found = await find.ExecuteScalarAsync(); if (found is null) { await using var insert = new SqlCommand("INSERT INTO dbo.Games(IgdbId,Name,Summary,CoverUrl,IgdbUrl,ReleaseDate,IgdbRating,Status,LastIgdbSyncAt) OUTPUT INSERTED.Id VALUES(@id,@name,@summary,@cover,@url,@release,@rating,N'Nuevo',SYSUTCDATETIME())", connection, transaction); Add(insert, igdbId, name, summary, cover, url, release, rating); gameId = Convert.ToInt32(await insert.ExecuteScalarAsync()); } else gameId = Convert.ToInt32(found); }
-            await using (var update = new SqlCommand("UPDATE dbo.Games SET Name=@name,Summary=@summary,CoverUrl=COALESCE(@cover,CoverUrl),IgdbUrl=@url,ReleaseDate=@release,IgdbRating=@rating,LastIgdbSyncAt=SYSUTCDATETIME(),UpdatedAt=SYSUTCDATETIME() WHERE Id=@gameId", connection, transaction)) { update.Parameters.AddWithValue("@gameId", gameId); Add(update, igdbId, name, summary, cover, url, release, rating, false); await update.ExecuteNonQueryAsync(); }
-            if (game.TryGetProperty("platforms", out var platforms) && platforms.ValueKind == JsonValueKind.Array) foreach (var platform in platforms.EnumerateArray()) { var platformName = platform.GetProperty("name").GetString(); if (string.IsNullOrWhiteSpace(platformName)) continue; await using var upsert = new SqlCommand("IF NOT EXISTS(SELECT 1 FROM dbo.Platforms WHERE Name=@name) INSERT dbo.Platforms(Name) VALUES(@name); SELECT Id FROM dbo.Platforms WHERE Name=@name", connection, transaction); upsert.Parameters.AddWithValue("@name", platformName); var platformId = Convert.ToInt32(await upsert.ExecuteScalarAsync()); await using var link = new SqlCommand("IF NOT EXISTS(SELECT 1 FROM dbo.GamePlatforms WHERE GameId=@gameId AND PlatformId=@platformId) INSERT dbo.GamePlatforms(GameId,PlatformId) VALUES(@gameId,@platformId)", connection, transaction); link.Parameters.AddWithValue("@gameId", gameId); link.Parameters.AddWithValue("@platformId", platformId); await link.ExecuteNonQueryAsync(); }
-            if (game.TryGetProperty("collection", out var collection) && collection.ValueKind == JsonValueKind.Object && collection.TryGetProperty("id", out var collectionId)) { var collectionName = collection.TryGetProperty("name", out var cn) ? cn.GetString() ?? "Serie" : "Serie"; await using var series = new SqlCommand("IF NOT EXISTS(SELECT 1 FROM dbo.Series WHERE IgdbId=@id) INSERT dbo.Series(IgdbId,Name,IgdbUrl,LastIgdbSyncAt) VALUES(@id,@name,@url,SYSUTCDATETIME()); UPDATE dbo.Series SET Name=@name,IgdbUrl=@url,LastIgdbSyncAt=SYSUTCDATETIME() WHERE IgdbId=@id; SELECT Id FROM dbo.Series WHERE IgdbId=@id", connection, transaction); series.Parameters.AddWithValue("@id", collectionId.GetInt32()); series.Parameters.AddWithValue("@name", collectionName); series.Parameters.AddWithValue("@url", collection.TryGetProperty("url", out var cu) ? (object?)cu.GetString() ?? DBNull.Value : DBNull.Value); var seriesId = Convert.ToInt32(await series.ExecuteScalarAsync()); await using var link = new SqlCommand("IF NOT EXISTS(SELECT 1 FROM dbo.GameSeries WHERE GameId=@gameId AND SeriesId=@seriesId) INSERT dbo.GameSeries(GameId,SeriesId) VALUES(@gameId,@seriesId)", connection, transaction); link.Parameters.AddWithValue("@gameId", gameId); link.Parameters.AddWithValue("@seriesId", seriesId); await link.ExecuteNonQueryAsync(); }
+            await using (var find = new SqlCommand("SELECT Id FROM dbo.Games WHERE IgdbId=@id", connection, transaction)) 
+            { 
+                find.Parameters.AddWithValue("@id", igdbId); 
+                var found = await find.ExecuteScalarAsync(); 
+                if (found is null) 
+                { 
+                    await using var insert = new SqlCommand("INSERT INTO dbo.Games(IgdbId,Name,Summary,CoverUrl,IgdbUrl,ReleaseDate,IgdbRating,Status,LastIgdbSyncAt) OUTPUT INSERTED.Id VALUES(@id,@name,@summary,@cover,@url,@release,@rating,N'Nuevo',SYSUTCDATETIME())", connection, transaction); 
+                    Add(insert, igdbId, name, summary, cover, url, release, rating); 
+                    gameId = Convert.ToInt32(await insert.ExecuteScalarAsync()); 
+                } 
+                else gameId = Convert.ToInt32(found); 
+            }
+            
+            await using (var update = new SqlCommand("UPDATE dbo.Games SET Name=@name,Summary=@summary,CoverUrl=COALESCE(@cover,CoverUrl),IgdbUrl=@url,ReleaseDate=@release,IgdbRating=@rating,LastIgdbSyncAt=SYSUTCDATETIME(),UpdatedAt=SYSUTCDATETIME() WHERE Id=@gameId", connection, transaction)) 
+            { 
+                update.Parameters.AddWithValue("@gameId", gameId); 
+                Add(update, igdbId, name, summary, cover, url, release, rating, false); 
+                await update.ExecuteNonQueryAsync(); 
+            }
+
+            if (game.TryGetProperty("platforms", out var platforms) && platforms.ValueKind == JsonValueKind.Array) 
+                foreach (var platform in platforms.EnumerateArray()) 
+                { 
+                    var platformName = platform.GetProperty("name").GetString(); 
+                    if (string.IsNullOrWhiteSpace(platformName)) continue; 
+                    await using var upsert = new SqlCommand("IF NOT EXISTS(SELECT 1 FROM dbo.Platforms WHERE Name=@name) INSERT dbo.Platforms(Name) VALUES(@name); SELECT Id FROM dbo.Platforms WHERE Name=@name", connection, transaction); 
+                    upsert.Parameters.AddWithValue("@name", platformName); 
+                    var platformId = Convert.ToInt32(await upsert.ExecuteScalarAsync()); 
+                    await using var link = new SqlCommand("IF NOT EXISTS(SELECT 1 FROM dbo.GamePlatforms WHERE GameId=@gameId AND PlatformId=@platformId) INSERT dbo.GamePlatforms(GameId,PlatformId) VALUES(@gameId,@platformId)", connection, transaction); 
+                    link.Parameters.AddWithValue("@gameId", gameId); 
+                    link.Parameters.AddWithValue("@platformId", platformId); 
+                    await link.ExecuteNonQueryAsync(); 
+                }
+
+            if (game.TryGetProperty("collection", out var collection) && collection.ValueKind == JsonValueKind.Object && collection.TryGetProperty("id", out var collectionId)) 
+            { 
+                var collectionName = collection.TryGetProperty("name", out var cn) ? cn.GetString() ?? "Serie" : "Serie"; 
+                await using var series = new SqlCommand("IF NOT EXISTS(SELECT 1 FROM dbo.Series WHERE IgdbId=@id) INSERT dbo.Series(IgdbId,Name,IgdbUrl,LastIgdbSyncAt) VALUES(@id,@name,@url,SYSUTCDATETIME()); UPDATE dbo.Series SET Name=@name,IgdbUrl=@url,LastIgdbSyncAt=SYSUTCDATETIME() WHERE IgdbId=@id; SELECT Id FROM dbo.Series WHERE IgdbId=@id", connection, transaction); 
+                series.Parameters.AddWithValue("@id", collectionId.GetInt32()); 
+                series.Parameters.AddWithValue("@name", collectionName); 
+                series.Parameters.AddWithValue("@url", collection.TryGetProperty("url", out var cu) ? (object?)cu.GetString() ?? DBNull.Value : DBNull.Value); 
+                var seriesId = Convert.ToInt32(await series.ExecuteScalarAsync()); 
+                await using var link = new SqlCommand("IF NOT EXISTS(SELECT 1 FROM dbo.GameSeries WHERE GameId=@gameId AND SeriesId=@seriesId) INSERT dbo.GameSeries(GameId,SeriesId) VALUES(@gameId,@seriesId)", connection, transaction); 
+                link.Parameters.AddWithValue("@gameId", gameId); 
+                link.Parameters.AddWithValue("@seriesId", seriesId); 
+                await link.ExecuteNonQueryAsync(); 
+            }
+
             await SyncResolvedCollectionsAsync(connection, transaction, gameId, collectionsDocument.RootElement);
             await SyncCollectionGamesAsync(connection, transaction, collectionGamesDocument.RootElement, collectionsDocument.RootElement);
             await ReconcileGameSeriesAsync(connection, transaction, gameId, GetReferenceIds(game, "collection").Concat(GetReferenceIds(game, "collections")));
             await UpdateExtendedMetadataAsync(connection, transaction, gameId, game);
             await SyncResolvedRelatedGamesAsync(connection, transaction, gameId, game, relatedGamesDocument.RootElement);
-            await transaction.CommitAsync(); return gameId;
+            
+            await transaction.CommitAsync(); 
+            return gameId;
         }
         catch { await transaction.RollbackAsync(); throw; }
     }
@@ -137,14 +196,37 @@ public sealed class IgdbLibraryService
     private static async Task SyncResolvedRelatedGamesAsync(SqlConnection c, SqlTransaction t, int gameId, JsonElement sourceGame, JsonElement relatedGames)
     {
         if (relatedGames.ValueKind != JsonValueKind.Array) return;
-        var dlcs = GetReferenceIds(sourceGame, "dlcs").ToHashSet(); var expansions = GetReferenceIds(sourceGame, "expansions").ToHashSet(); var standalone = GetReferenceIds(sourceGame, "standalone_expansions").ToHashSet(); var bundles = GetReferenceIds(sourceGame, "bundles").ToHashSet();
+        
+        var dlcs = GetReferenceIds(sourceGame, "dlcs").ToHashSet(); 
+        var expansions = GetReferenceIds(sourceGame, "expansions").ToHashSet(); 
+        var standalone = GetReferenceIds(sourceGame, "standalone_expansions").ToHashSet(); 
+        var bundles = GetReferenceIds(sourceGame, "bundles").ToHashSet();
+        var episodes = GetReferenceIds(sourceGame, "episodes").ToHashSet();
+        var seasons = GetReferenceIds(sourceGame, "seasons").ToHashSet();
+        var packs = GetReferenceIds(sourceGame, "packs").ToHashSet();
+
         foreach (var item in relatedGames.EnumerateArray())
         {
             if (!item.TryGetProperty("id", out var id) || !id.TryGetInt32(out var igdbId) || !item.TryGetProperty("name", out var name)) continue;
-            var type = dlcs.Contains(igdbId) ? "DLC" : expansions.Contains(igdbId) ? "Expansión" : standalone.Contains(igdbId) ? "Expansión independiente" : bundles.Contains(igdbId) ? "Bundle" : "Relacionado";
+            
+            var type = dlcs.Contains(igdbId) ? "DLC" : 
+                       expansions.Contains(igdbId) ? "Expansión" : 
+                       standalone.Contains(igdbId) ? "Expansión independiente" : 
+                       bundles.Contains(igdbId) ? "Bundle" :
+                       episodes.Contains(igdbId) ? "Episodio" :
+                       seasons.Contains(igdbId) ? "Pase de temporada" :
+                       packs.Contains(igdbId) ? "Pack de contenido" : "Relacionado";
+
             DateTime? date = item.TryGetProperty("first_release_date", out var dateValue) && dateValue.ValueKind == JsonValueKind.Number ? DateTimeOffset.FromUnixTimeSeconds(dateValue.GetInt64()).UtcDateTime.Date : null;
+            
             await using var command = new SqlCommand("IF NOT EXISTS (SELECT 1 FROM dbo.Dlc WHERE IgdbId=@igdbId) INSERT dbo.Dlc(IgdbId,BaseGameId,Name,Type,IgdbUrl,ReleaseDate) VALUES(@igdbId,@gameId,@name,@type,@url,@date) ELSE UPDATE dbo.Dlc SET BaseGameId=@gameId,Name=@name,Type=@type,IgdbUrl=@url,ReleaseDate=@date WHERE IgdbId=@igdbId", c, t);
-            command.Parameters.AddWithValue("@igdbId", igdbId); command.Parameters.AddWithValue("@gameId", gameId); command.Parameters.AddWithValue("@name", name.GetString() ?? "Relacionado"); command.Parameters.AddWithValue("@type", type); command.Parameters.AddWithValue("@url", item.TryGetProperty("url", out var url) ? (object?)url.GetString() ?? DBNull.Value : DBNull.Value); command.Parameters.AddWithValue("@date", (object?)date ?? DBNull.Value); await command.ExecuteNonQueryAsync();
+            command.Parameters.AddWithValue("@igdbId", igdbId); 
+            command.Parameters.AddWithValue("@gameId", gameId); 
+            command.Parameters.AddWithValue("@name", name.GetString() ?? "Relacionado"); 
+            command.Parameters.AddWithValue("@type", type); 
+            command.Parameters.AddWithValue("@url", item.TryGetProperty("url", out var url) ? (object?)url.GetString() ?? DBNull.Value : DBNull.Value); 
+            command.Parameters.AddWithValue("@date", (object?)date ?? DBNull.Value); 
+            await command.ExecuteNonQueryAsync();
         }
     }
 

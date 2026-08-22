@@ -167,7 +167,8 @@ public class FinanceFunctions
 
         await response.WriteAsJsonAsync(new {
             user = new { authUser.UserId, authUser.FullName, authUser.Email },
-            household = authUser.HouseholdId.HasValue ? new { id = authUser.HouseholdId, name = authUser.HouseholdName, role = authUser.Role } : null,
+            household = authUser.HouseholdId.HasValue ? new { id = authUser.HouseholdId, name = authUser.HouseholdName, role = authUser.Role,
+                inviteCode = authUser.InviteCode } : null,
             summary = new { liquidBalance, creditCardDebt, monthlyIncome, monthlyExpense, householdExpenseThisMonth, totalAssetsValue },
             accounts,
             categories,
