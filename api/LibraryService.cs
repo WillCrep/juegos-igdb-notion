@@ -41,7 +41,8 @@ public sealed class LibraryService
                    g.PlayTimeHours, s.Name AS SeriesName,
                    (SELECT COUNT(*) FROM dbo.CollectionEntries ce WHERE ce.GameId = g.Id AND ce.Owned = 1) AS OwnedCopies,
                    (SELECT COUNT(*) FROM dbo.Achievements a JOIN dbo.AchievementSets aset ON aset.Id = a.AchievementSetId WHERE aset.GameId = g.Id) AS AchievementTotal,
-                   (SELECT COUNT(*) FROM dbo.UserAchievements ua JOIN dbo.Achievements a ON a.Id = ua.AchievementId JOIN dbo.AchievementSets aset ON aset.Id = a.AchievementSetId WHERE aset.GameId = g.Id AND ua.Unlocked = 1) AS AchievementUnlocked
+                   (SELECT COUNT(*) FROM dbo.UserAchievements ua JOIN dbo.Achievements a ON a.Id = ua.AchievementId JOIN dbo.AchievementSets aset ON aset.Id = a.AchievementSetId WHERE aset.GameId = g.Id AND ua.Unlocked = 1) AS AchievementUnlocked,
+                   g.Genres
             FROM dbo.Games g
             OUTER APPLY (
                 SELECT TOP 1 s.Name
@@ -66,7 +67,8 @@ public sealed class LibraryService
                 reader.GetInt32(0), reader.GetString(1), reader.IsDBNull(2) ? null : reader.GetString(2),
                 reader.GetString(3), reader.IsDBNull(4) ? null : reader.GetByte(4), reader.IsDBNull(5) ? null : reader.GetDateTime(5),
                 reader.IsDBNull(6) ? null : reader.GetDecimal(6), reader.IsDBNull(7) ? null : reader.GetString(7),
-                reader.GetInt32(8), reader.GetInt32(9), reader.GetInt32(10)));
+                reader.GetInt32(8), reader.GetInt32(9), reader.GetInt32(10),
+                reader.IsDBNull(11) ? null : reader.GetString(11)));
         }
         return result;
     }
@@ -433,7 +435,7 @@ public sealed class LibraryService
 }
 
 public sealed record LibraryStats(int Games, int Owned, int Series, int Achievements, int Unlocked);
-public sealed record GameSummary(int Id, string Name, string? CoverUrl, string Status, byte? MyRating, DateTime? ReleaseDate, decimal? PlayTimeHours, string? SeriesName, int OwnedCopies, int AchievementTotal, int AchievementUnlocked);
+public sealed record GameSummary(int Id, string Name, string? CoverUrl, string Status, byte? MyRating, DateTime? ReleaseDate, decimal? PlayTimeHours, string? SeriesName, int OwnedCopies, int AchievementTotal, int AchievementUnlocked, string? Genres = null);
 public sealed record GameDetails(int Id, string Name, int? IgdbId, string? Summary, string? CoverUrl, string? IgdbUrl, DateTime? ReleaseDate, decimal? IgdbRating, byte? MyRating, string Status, decimal? PlayTimeHours, string? Notes, int? SeriesId = null, string? SeriesName = null, string? Genres = null, string? Developers = null, string? Publishers = null, string? Franchises = null, string? Screenshots = null, string? Videos = null, IReadOnlyList<CollectionItem>? Collection = null, IReadOnlyList<DlcItem>? Dlcs = null);
 public sealed record CollectionItem(int Id, string Platform, string Store, string Edition, bool Owned, string? Format);
 public sealed record DlcItem(int Id, int? IgdbId, string Name, string? Type, string? IgdbUrl, DateTime? ReleaseDate, IReadOnlyList<DlcCopyItem> Copies);

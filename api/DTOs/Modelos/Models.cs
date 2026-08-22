@@ -5,6 +5,7 @@ public record RegisterDto(string Email, string Password, string FullName, string
 public record LoginDto(string Email, string Password);
 public record AuthenticatedUser(int UserId, string Email, string FullName, int? HouseholdId, string? HouseholdName, string Role, string? InviteCode = null);
 
+
 // Transacciones e Ítems de Boleta
 public record TransactionItemDto(
     string ProductName,
