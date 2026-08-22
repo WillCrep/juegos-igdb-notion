@@ -36,29 +36,52 @@ public sealed class LibraryService
         pageSize = Math.Clamp(pageSize, 1, 100);
         await using var connection = OpenConnection();
         await connection.OpenAsync();
+        
         await using var command = new SqlCommand("""
-            SELECT g.Id, g.Name, g.CoverUrl, g.Status, g.MyRating, g.ReleaseDate,
-                   g.PlayTimeHours, s.Name AS SeriesName,
-                   (SELECT COUNT(*) FROM dbo.CollectionEntries ce WHERE ce.GameId = g.Id AND ce.Owned = 1) AS OwnedCopies,
-                   (SELECT COUNT(*) FROM dbo.Achievements a JOIN dbo.AchievementSets aset ON aset.Id = a.AchievementSetId WHERE aset.GameId = g.Id) AS AchievementTotal,
-                   (SELECT COUNT(*) FROM dbo.UserAchievements ua JOIN dbo.Achievements a ON a.Id = ua.AchievementId JOIN dbo.AchievementSets aset ON aset.Id = a.AchievementSetId WHERE aset.GameId = g.Id AND ua.Unlocked = 1) AS AchievementUnlocked,
-                   g.Genres
-            FROM dbo.Games g
+            WITH PagedGames AS (
+                SELECT g.Id, g.Name, g.CoverUrl, g.Status, g.MyRating, g.ReleaseDate,
+                       g.PlayTimeHours, g.Genres, g.UpdatedAt
+                FROM dbo.Games g
+                WHERE (@search IS NULL OR g.Name LIKE N'%' + @search + N'%')
+                  AND (@status IS NULL OR g.Status = @status)
+                ORDER BY g.UpdatedAt DESC, g.Name
+                OFFSET @offset ROWS FETCH NEXT @pageSize ROWS ONLY
+            )
+            SELECT pg.Id, pg.Name, pg.CoverUrl, pg.Status, pg.MyRating, pg.ReleaseDate,
+                   pg.PlayTimeHours, s.Name AS SeriesName,
+                   COALESCE(cs.OwnedCopies, 0) AS OwnedCopies,
+                   COALESCE(gs.AchievementTotal, 0) AS AchievementTotal,
+                   COALESCE(gs.AchievementUnlocked, 0) AS AchievementUnlocked,
+                   pg.Genres
+            FROM PagedGames pg
             OUTER APPLY (
                 SELECT TOP 1 s.Name
-                FROM dbo.GameSeries gs JOIN dbo.Series s ON s.Id = gs.SeriesId
-                WHERE gs.GameId = g.Id
-                ORDER BY gs.SequenceNumber, s.Name
+                FROM dbo.GameSeries gser JOIN dbo.Series s ON s.Id = gser.SeriesId
+                WHERE gser.GameId = pg.Id
+                ORDER BY gser.SequenceNumber, s.Name
             ) s
-            WHERE (@search IS NULL OR g.Name LIKE N'%' + @search + N'%')
-              AND (@status IS NULL OR g.Status = @status)
-            ORDER BY g.UpdatedAt DESC, g.Name
-            OFFSET @offset ROWS FETCH NEXT @pageSize ROWS ONLY;
-            """, connection);
+            OUTER APPLY (
+                SELECT COUNT(*) AS OwnedCopies
+                FROM dbo.CollectionEntries ce
+                WHERE ce.GameId = pg.Id AND ce.Owned = 1
+            ) cs
+            OUTER APPLY (
+                SELECT 
+                    COUNT(a.Id) AS AchievementTotal,
+                    COUNT(CASE WHEN ua.Unlocked = 1 THEN 1 END) AS AchievementUnlocked
+                FROM dbo.AchievementSets aset
+                JOIN dbo.Achievements a ON a.AchievementSetId = aset.Id
+                LEFT JOIN dbo.UserAchievements ua ON ua.AchievementId = a.Id
+                WHERE aset.GameId = pg.Id
+            ) gs
+            ORDER BY pg.UpdatedAt DESC, pg.Name;
+        """, connection);
+
         command.Parameters.Add(new SqlParameter("@search", SqlDbType.NVarChar, 300) { Value = (object?)search ?? DBNull.Value });
         command.Parameters.Add(new SqlParameter("@status", SqlDbType.NVarChar, 40) { Value = (object?)status ?? DBNull.Value });
         command.Parameters.AddWithValue("@offset", (page - 1) * pageSize);
         command.Parameters.AddWithValue("@pageSize", pageSize);
+
         await using var reader = await command.ExecuteReaderAsync();
         var result = new List<GameSummary>();
         while (await reader.ReadAsync())
