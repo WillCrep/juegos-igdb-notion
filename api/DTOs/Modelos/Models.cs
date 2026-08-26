@@ -75,3 +75,16 @@ public record SavingsGoalDto(
 );
 
 public record GoalDepositDto(decimal Amount);
+
+// DTOs para Escáner con Azure Document Intelligence
+// DTOs para Escáner Multi-Foto
+public record ScanReceiptRequest(List<string> ImagesBase64);
+
+public record ScanResultDto(
+    string TransactionType,
+    decimal Amount,
+    string TransactionDate,
+    string? StoreName,
+    string? Description,
+    List<TransactionItemDto>? Items
+);

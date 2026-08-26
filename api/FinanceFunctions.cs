@@ -878,4 +878,84 @@ public class FinanceFunctions
         await cmd.ExecuteNonQueryAsync();
         return req.CreateResponse(HttpStatusCode.Created);
     }
+
+    // =========================================================================
+    // ESCANEAR BOLETA MULTI-FOTO CON AZURE AI (FUSIÓN INTELIGENTE)
+    // =========================================================================
+    [Function("ScanReceipt")]
+    public async Task<HttpResponseData> ScanReceipt(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "finance/scan-receipt")] HttpRequestData req)
+    {
+        var (authUser, errorMsg) = await AuthHelper.ValidateTokenAsync(req);
+        if (authUser == null) return req.CreateResponse(HttpStatusCode.Unauthorized);
+
+        var body = await new StreamReader(req.Body).ReadToEndAsync();
+        var dto = JsonSerializer.Deserialize<ScanReceiptRequest>(body, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+        if (dto == null || dto.ImagesBase64 == null || dto.ImagesBase64.Count == 0)
+            return req.CreateResponse(HttpStatusCode.BadRequest);
+
+        try
+        {
+            // 1. Preparar bytes de cada imagen
+            var imagesBytesList = new List<byte[]>();
+            foreach (var b64 in dto.ImagesBase64)
+            {
+                if (string.IsNullOrWhiteSpace(b64)) continue;
+                string cleanBase64 = b64.Contains(",") ? b64.Split(',')[1] : b64;
+                imagesBytesList.Add(Convert.FromBase64String(cleanBase64));
+            }
+
+            if (imagesBytesList.Count == 0)
+                return req.CreateResponse(HttpStatusCode.BadRequest);
+
+            // 2. Procesar TODAS las fotos en paralelo en Azure para máxima velocidad
+            var tasks = imagesBytesList.Select(img => AiScanHelper.ScanReceiptAsync(img));
+            var results = await Task.WhenAll(tasks);
+
+            // 3. Fusión de Resultados (Merge)
+            string storeName = "Comercio";
+            string date = DateTime.UtcNow.ToString("yyyy-MM-dd");
+            decimal maxDetectedTotal = 0.0m;
+            var allItems = new List<TransactionItemDto>();
+
+            foreach (var res in results)
+            {
+                if (res.StoreName != null && res.StoreName != "Comercio")
+                    storeName = res.StoreName;
+
+                if (!string.IsNullOrEmpty(res.TransactionDate))
+                    date = res.TransactionDate;
+
+                if (res.Amount > maxDetectedTotal)
+                    maxDetectedTotal = res.Amount;
+
+                if (res.Items != null && res.Items.Count > 0)
+                    allItems.AddRange(res.Items);
+            }
+
+            // Si el total detectado en pie de página es menor a la suma de todos los ítems fusionados, usar la suma
+            decimal sumOfItems = allItems.Sum(x => x.TotalPrice);
+            decimal finalAmount = maxDetectedTotal > 0 ? maxDetectedTotal : sumOfItems;
+
+            var finalResult = new ScanResultDto(
+                TransactionType: "EXPENSE",
+                Amount: finalAmount,
+                TransactionDate: date,
+                StoreName: storeName,
+                Description: $"Compra en {storeName} ({dto.ImagesBase64.Count} fotos)",
+                Items: allItems.Count > 0 ? allItems : null
+            );
+
+            var response = req.CreateResponse(HttpStatusCode.OK);
+            await response.WriteAsJsonAsync(finalResult);
+            return response;
+        }
+        catch (Exception ex)
+        {
+            var errResponse = req.CreateResponse(HttpStatusCode.InternalServerError);
+            await errResponse.WriteStringAsync($"Error procesando fotos: {ex.Message}");
+            return errResponse;
+        }
+    }
 }
