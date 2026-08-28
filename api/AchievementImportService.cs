@@ -5,6 +5,7 @@ public sealed class AchievementImportService
     private const string Source = "TrophiesHunter";
     private readonly string? connectionString = Environment.GetEnvironmentVariable("SQL_CONNECTION_STRING");
     private readonly TrophiesHunterClient trophies;
+    private readonly AiConsultantService? aiService; // 👈 Inyectar AiConsultantService
 
     public AchievementImportService(TrophiesHunterClient trophies) => this.trophies = trophies;
     private SqlConnection OpenConnection() => string.IsNullOrWhiteSpace(connectionString) ? throw new InvalidOperationException("SQL_CONNECTION_STRING no está configurada.") : new SqlConnection(connectionString);
@@ -20,17 +21,26 @@ public sealed class AchievementImportService
     {
         if (request.Achievements is null || request.Achievements.Count == 0)
             throw new InvalidOperationException("El JSON no contiene logros.");
-        if (request.Achievements.Count > 10000)
-            throw new InvalidOperationException("El JSON supera el límite de 10.000 logros.");
 
         var achievements = request.Achievements
             .Where(x => !string.IsNullOrWhiteSpace(x.ExternalId) && !string.IsNullOrWhiteSpace(x.Name))
-            .Select(x => new TrophiesHunterAchievement(x.ExternalId.Trim(), x.Name.Trim(), x.Description, x.Points, x.RarityPercent, x.Tier, x.IsHidden, x.IsMissable, x.ImageUrl, x.ScoreType, x.IsRare))
+            .Select(x => new AchievementJsonItem(x.ExternalId.Trim(), x.Name.Trim(), x.Description, x.Tier, x.Points, x.RarityPercent, x.IsHidden, x.IsMissable, x.ImageUrl, x.ScoreType, x.IsRare))
             .ToList();
-        if (achievements.Count == 0) throw new InvalidOperationException("El JSON no contiene logros válidos con externalId y name.");
+
+        if (achievements.Count == 0) throw new InvalidOperationException("El JSON no contiene logros válidos.");
+
+        // 👉 TRADUCCIÓN AUTOMÁTICA CON GROQ IA SI VIENE HABILITADA
+        if (request.TranslateToSpanish && aiService != null)
+        {
+            achievements = await aiService.TranslateAchievementsBatchAsync(achievements);
+        }
+
+        var domainAchievements = achievements
+            .Select(x => new TrophiesHunterAchievement(x.ExternalId, x.Name, x.Description, x.Points, x.RarityPercent, x.Tier, x.IsHidden, x.IsMissable, x.ImageUrl, x.ScoreType, x.IsRare))
+            .ToList();
 
         var sourceUrl = string.IsNullOrWhiteSpace(request.SourceUrl) ? "local-json" : request.SourceUrl.Trim();
-        var set = new TrophiesHunterAchievementSet(sourceUrl, request.SetName, request.Platform, achievements);
+        var set = new TrophiesHunterAchievementSet(sourceUrl, request.SetName, request.Platform, domainAchievements);
         return await SaveAsync(gameId, request.PlatformId, request.StoreId, sourceUrl, set, ct);
     }
 
@@ -83,6 +93,14 @@ public sealed class AchievementImportService
 }
 
 public sealed record AchievementImportRequest(int PlatformId, int? StoreId, string SourceUrl);
-public sealed record AchievementJsonImportRequest(int PlatformId, int? StoreId, string? SourceUrl, string? SetName, string? Platform, IReadOnlyList<AchievementJsonItem> Achievements);
+public sealed record AchievementJsonImportRequest(
+    int PlatformId, 
+    int? StoreId, 
+    string? SourceUrl, 
+    string? SetName, 
+    string? Platform, 
+    IReadOnlyList<AchievementJsonItem> Achievements, 
+    bool TranslateToSpanish = false // 👈 Nuevo parámetro opcional
+);
 public sealed record AchievementJsonItem(string ExternalId, string Name, string? Description, string? Tier, int? Points, decimal? RarityPercent, bool IsHidden, bool IsMissable, string? ImageUrl, string? ScoreType, bool IsRare);
 public sealed record AchievementImportResult(int AchievementSetId, int Imported, string? Name, string? Platform);

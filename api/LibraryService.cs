@@ -455,6 +455,70 @@ public sealed class LibraryService
             throw;
         }
     }
+
+ public async Task<int> TranslateExistingAchievementsAsync(int gameId)
+    {
+        await using var connection = OpenConnection();
+        await connection.OpenAsync();
+
+        // 1. Obtener los logros actuales del juego
+        await using var queryCmd = new SqlCommand("""
+            SELECT a.Id, a.Name, a.Description, a.ExternalId, a.Tier, a.ScoreType, a.Points, a.RarityPercent, a.IsHidden, a.IsMissable, a.IsRare, a.ImageUrl
+            FROM dbo.Achievements a 
+            JOIN dbo.AchievementSets aset ON aset.Id = a.AchievementSetId 
+            WHERE aset.GameId = @gameId
+            ORDER BY a.SortOrder, a.Id;
+        """, connection);
+        queryCmd.Parameters.AddWithValue("@gameId", gameId);
+
+        var list = new List<AchievementJsonItem>();
+        var idMap = new List<int>();
+
+        await using (var reader = await queryCmd.ExecuteReaderAsync())
+        {
+            while (await reader.ReadAsync())
+            {
+                idMap.Add(reader.GetInt32(0));
+                list.Add(new AchievementJsonItem(
+                    reader.GetString(3),
+                    reader.GetString(1),
+                    reader.IsDBNull(2) ? null : reader.GetString(2),
+                    reader.IsDBNull(4) ? null : reader.GetString(4),
+                    reader.IsDBNull(6) ? null : reader.GetInt32(6),
+                    reader.IsDBNull(7) ? null : reader.GetDecimal(7),
+                    reader.GetBoolean(8),
+                    reader.GetBoolean(9),
+                    reader.IsDBNull(11) ? null : reader.GetString(11),
+                    reader.IsDBNull(5) ? null : reader.GetString(5),
+                    reader.GetBoolean(10)
+                ));
+            }
+        }
+
+        if (list.Count == 0) throw new InvalidOperationException("No se encontraron logros guardados para este juego.");
+
+        // 2. Traducir con Groq IA
+        var http = new HttpClient();
+        var ai = new AiConsultantService(http);
+        var translated = await ai.TranslateAchievementsBatchAsync(list);
+
+        // 3. Actualizar nombres y descripciones en Azure SQL
+        await using var tx = (SqlTransaction)await connection.BeginTransactionAsync();
+        try
+        {
+            for (int i = 0; i < translated.Count; i++)
+            {
+                await using var updateCmd = new SqlCommand("UPDATE dbo.Achievements SET Name = @name, Description = @desc WHERE Id = @id", connection, tx);
+                updateCmd.Parameters.AddWithValue("@name", translated[i].Name);
+                updateCmd.Parameters.AddWithValue("@desc", (object?)translated[i].Description ?? DBNull.Value);
+                updateCmd.Parameters.AddWithValue("@id", idMap[i]);
+                await updateCmd.ExecuteNonQueryAsync();
+            }
+            await tx.CommitAsync();
+            return translated.Count;
+        }
+        catch { await tx.RollbackAsync(); throw; }
+    }
 }
 
 public sealed record LibraryStats(int Games, int Owned, int Series, int Achievements, int Unlocked);

@@ -155,4 +155,272 @@ public sealed class AiConsultantService
         var metadata = await container.ReadContainerAsync();
         return metadata.Resource.PartitionKeyPath.EndsWith("/id", StringComparison.OrdinalIgnoreCase) ? id : fallback;
     }
+
+public async Task<List<AchievementJsonItem>> TranslateAchievementsBatchAsync(List<AchievementJsonItem> items)
+    {
+        if (string.IsNullOrWhiteSpace(groqKey))
+        {
+            Console.ForegroundColor = ConsoleColor.Red;
+            Console.WriteLine("[ERROR GROQ]: GROQ_API_KEY no está configurada en local.settings.json.");
+            Console.ResetColor();
+            throw new InvalidOperationException("GROQ_API_KEY no está configurada en las variables de entorno.");
+        }
+
+        if (items.Count == 0) return items;
+
+        const int batchSize = 10;
+        var chunks = items.Chunk(batchSize).ToList();
+        var allTranslated = new List<AchievementJsonItem>();
+
+        Console.ForegroundColor = ConsoleColor.Cyan;
+        Console.WriteLine($"[IA TRADUCCIÓN]: Iniciando traducción de {items.Count} logros en {chunks.Count} lotes seguros...");
+        Console.ResetColor();
+
+        for (int chunkIndex = 0; chunkIndex < chunks.Count; chunkIndex++)
+        {
+            var chunk = chunks[chunkIndex].ToList();
+            Console.ForegroundColor = ConsoleColor.Yellow;
+            Console.WriteLine($"[IA LOTE {chunkIndex + 1}/{chunks.Count}]: Traduciendo {chunk.Count} logros...");
+            Console.ResetColor();
+
+            var translatedChunk = await TranslateSingleChunkWithRetryAsync(chunk, chunkIndex + 1, chunks.Count);
+            allTranslated.AddRange(translatedChunk);
+
+            if (chunkIndex < chunks.Count - 1)
+            {
+                await Task.Delay(400); // Pausa preventiva entre llamadas
+            }
+        }
+
+        Console.ForegroundColor = ConsoleColor.Green;
+        Console.WriteLine($"[IA TRADUCCIÓN ÉXITO TOTAL]: Se tradujeron {allTranslated.Count} de {items.Count} logros al español.");
+        Console.ResetColor();
+
+        return allTranslated;
+    }
+
+     private async Task<List<AchievementJsonItem>> TranslateSingleChunkWithRetryAsync(List<AchievementJsonItem> items, int currentChunk, int totalChunks)
+    {
+        int maxRetries = 3;
+        for (int attempt = 1; attempt <= maxRetries; attempt++)
+        {
+            try
+            {
+                return await ExecuteChunkTranslationAsync(items, currentChunk);
+            }
+            catch (HttpRequestException ex) when (ex.Message.Contains("429") || ex.Message.Contains("rate_limit_exceeded"))
+            {
+                var match = System.Text.RegularExpressions.Regex.Match(ex.Message, @"try again in (\d+(?:\.\d+)?)s");
+                double waitSeconds = match.Success ? double.Parse(match.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture) + 2.0 : 15.0;
+
+                Console.ForegroundColor = ConsoleColor.Magenta;
+                Console.WriteLine($"[IA EN ESPERA LOTE {currentChunk}]: Límite alcanzado. Esperando {waitSeconds:F1}s para reintentar (Intento {attempt}/{maxRetries})...");
+                Console.ResetColor();
+
+                await Task.Delay(TimeSpan.FromSeconds(waitSeconds));
+            }
+            catch (Exception ex)
+            {
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine($"[ERROR EN LOTE {currentChunk}]: {ex.Message}");
+                Console.ResetColor();
+                if (attempt == maxRetries) return items;
+                await Task.Delay(1000);
+            }
+        }
+
+        return items;
+    }
+
+      private async Task<List<AchievementJsonItem>> ExecuteChunkTranslationAsync(List<AchievementJsonItem> items, int chunkNumber)
+    {
+        var payloadToTranslate = items.Select((item, idx) => new
+        {
+            i = idx,
+            n = item.Name,
+            d = item.Description ?? string.Empty
+        }).ToList();
+
+        var systemPrompt = "Eres un traductor profesional de videojuegos. Traduce al español neutro los campos 'n' (nombre del logro) y 'd' (descripción del logro). Mantén nombres propios. Responde EXCLUSIVAMENTE con un objeto JSON con una propiedad 't' que contenga el array: {\"t\": [{\"i\": 0, \"n\": \"Nombre traducido\", \"d\": \"Descripción traducida\"}]}.";
+
+        var groqPayload = new
+        {
+            model = string.IsNullOrWhiteSpace(model) ? "openai/gpt-oss-20b" : model,
+            temperature = 0.1,
+            max_tokens = 1200,
+            response_format = new { type = "json_object" },
+            messages = new[]
+            {
+                new { role = "system", content = systemPrompt },
+                new { role = "user", content = JsonSerializer.Serialize(new { list = payloadToTranslate }, JsonOptions) }
+            }
+        };
+
+        using var message = new HttpRequestMessage(HttpMethod.Post, "https://api.groq.com/openai/v1/chat/completions");
+        message.Headers.Authorization = new AuthenticationHeaderValue("Bearer", groqKey);
+        message.Content = new StringContent(JsonSerializer.Serialize(groqPayload, JsonOptions), Encoding.UTF8, "application/json");
+
+        using var response = await http.SendAsync(message);
+        var body = await response.Content.ReadAsStringAsync();
+
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new HttpRequestException($"{(int)response.StatusCode} - {body}");
+        }
+
+        using var jsonDoc = JsonDocument.Parse(body);
+        var content = jsonDoc.RootElement.GetProperty("choices")[0].GetProperty("message").GetProperty("content").GetString();
+
+        if (string.IsNullOrWhiteSpace(content)) return items;
+
+        using var translatedDoc = JsonDocument.Parse(content);
+        var root = translatedDoc.RootElement;
+
+        // BÚSQUEDA UNIVERSAL DEL ARREGLO JSON (Sin importar el nombre de la propiedad)
+        JsonElement array = default;
+        bool foundArray = false;
+
+        if (root.ValueKind == JsonValueKind.Array)
+        {
+            array = root;
+            foundArray = true;
+        }
+        else if (root.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var prop in root.EnumerateObject())
+            {
+                if (prop.Value.ValueKind == JsonValueKind.Array)
+                {
+                    array = prop.Value;
+                    foundArray = true;
+                    break;
+                }
+            }
+        }
+
+        if (!foundArray)
+        {
+            Console.ForegroundColor = ConsoleColor.Yellow;
+            Console.WriteLine($"[AVISO LOTE {chunkNumber}]: No se encontró array en la respuesta. Se mantiene original.");
+            Console.ResetColor();
+            return items;
+        }
+
+        var result = new List<AchievementJsonItem>(items);
+        int successInChunk = 0;
+
+        foreach (var elem in array.EnumerateArray())
+        {
+            int? idx = null;
+            if (elem.TryGetProperty("i", out var iProp) && iProp.TryGetInt32(out var iVal))
+                idx = iVal;
+            else if (elem.TryGetProperty("id", out var idProp) && idProp.TryGetInt32(out var idVal))
+                idx = idVal;
+
+            if (idx.HasValue && idx.Value >= 0 && idx.Value < result.Count)
+            {
+                var translatedName = elem.TryGetProperty("n", out var nProp) ? nProp.GetString() : (elem.TryGetProperty("name", out var np) ? np.GetString() : null);
+                var translatedDesc = elem.TryGetProperty("d", out var dProp) ? dProp.GetString() : (elem.TryGetProperty("description", out var dp) ? dp.GetString() : null);
+                var current = result[idx.Value];
+
+                result[idx.Value] = current with
+                {
+                    Name = !string.IsNullOrWhiteSpace(translatedName) ? translatedName : current.Name,
+                    Description = !string.IsNullOrWhiteSpace(translatedDesc) ? translatedDesc : current.Description
+                };
+                successInChunk++;
+            }
+        }
+
+        Console.ForegroundColor = ConsoleColor.DarkGreen;
+        Console.WriteLine($"[LOTE {chunkNumber} OK]: {successInChunk} logros procesados correctamente.");
+        Console.ResetColor();
+
+        return result;
+    }
+
+    private async Task<List<AchievementJsonItem>> TranslateSingleChunkAsync(List<AchievementJsonItem> items)
+    {
+        var payloadToTranslate = items.Select((item, idx) => new
+        {
+            id = idx,
+            name = item.Name,
+            description = item.Description ?? string.Empty
+        }).ToList();
+
+        var systemPrompt = "Eres un traductor profesional de videojuegos. Traduce al español neutro los campos 'name' y 'description'. Mantén nombres propios. Responde EXCLUSIVAMENTE con un JSON con la propiedad 'translated': {\"translated\": [{\"id\": 0, \"name\": \"Título traducido\", \"description\": \"Descripción traducida\"}]}.";
+
+        var groqPayload = new
+        {
+            model = string.IsNullOrWhiteSpace(model) ? "openai/gpt-oss-20b" : model,
+            temperature = 0.1,
+            max_tokens = 1800,
+            response_format = new { type = "json_object" },
+            messages = new[]
+            {
+                new { role = "system", content = systemPrompt },
+                new { role = "user", content = JsonSerializer.Serialize(new { list = payloadToTranslate }, JsonOptions) }
+            }
+        };
+
+        using var message = new HttpRequestMessage(HttpMethod.Post, "https://api.groq.com/openai/v1/chat/completions");
+        message.Headers.Authorization = new AuthenticationHeaderValue("Bearer", groqKey);
+        message.Content = new StringContent(JsonSerializer.Serialize(groqPayload, JsonOptions), Encoding.UTF8, "application/json");
+
+        using var response = await http.SendAsync(message);
+        var body = await response.Content.ReadAsStringAsync();
+
+        if (!response.IsSuccessStatusCode)
+        {
+            Console.ForegroundColor = ConsoleColor.Red;
+            Console.WriteLine($"[ERROR GROQ LOTE {(int)response.StatusCode}]: {body}");
+            Console.ResetColor();
+            throw new InvalidOperationException($"Groq devolvió error {(int)response.StatusCode}: {body}");
+        }
+
+        using var jsonDoc = JsonDocument.Parse(body);
+        var content = jsonDoc.RootElement.GetProperty("choices")[0].GetProperty("message").GetProperty("content").GetString();
+
+        if (string.IsNullOrWhiteSpace(content)) return items;
+
+        using var translatedDoc = JsonDocument.Parse(content);
+        var root = translatedDoc.RootElement;
+
+        JsonElement array;
+        if (root.ValueKind == JsonValueKind.Array)
+            array = root;
+        else if (root.TryGetProperty("translated", out var tProp) && tProp.ValueKind == JsonValueKind.Array)
+            array = tProp;
+        else if (root.TryGetProperty("list", out var lProp) && lProp.ValueKind == JsonValueKind.Array)
+            array = lProp;
+        else
+            array = root.EnumerateObject().First(p => p.Value.ValueKind == JsonValueKind.Array).Value;
+
+        var result = new List<AchievementJsonItem>(items);
+
+        foreach (var elem in array.EnumerateArray())
+        {
+            int? idx = null;
+            if (elem.TryGetProperty("id", out var idProp) && idProp.TryGetInt32(out var idVal))
+                idx = idVal;
+            else if (elem.TryGetProperty("i", out var iProp) && iProp.TryGetInt32(out var iVal))
+                idx = iVal;
+
+            if (idx.HasValue && idx.Value >= 0 && idx.Value < result.Count)
+            {
+                var translatedName = elem.TryGetProperty("name", out var nProp) ? nProp.GetString() : (elem.TryGetProperty("n", out var np) ? np.GetString() : null);
+                var translatedDesc = elem.TryGetProperty("description", out var dProp) ? dProp.GetString() : (elem.TryGetProperty("d", out var dp) ? dp.GetString() : null);
+                var current = result[idx.Value];
+
+                result[idx.Value] = current with
+                {
+                    Name = !string.IsNullOrWhiteSpace(translatedName) ? translatedName : current.Name,
+                    Description = !string.IsNullOrWhiteSpace(translatedDesc) ? translatedDesc : current.Description
+                };
+            }
+        }
+
+        return result;
+    }
+
 }

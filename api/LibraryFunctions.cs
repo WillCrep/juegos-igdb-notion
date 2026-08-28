@@ -152,6 +152,10 @@ public sealed class LibraryFunctions
         return await Execute(request, () => achievementImport.ImportJsonAsync(id, body), HttpStatusCode.Created);
     }
 
+    [Function("TranslateGameAchievements")]
+    public Task<HttpResponseData> TranslateAchievements([HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "library/games/{id:int}/achievements/translate")] HttpRequestData request, int id)
+        => Execute(request, async () => new { translated = await library.TranslateExistingAchievementsAsync(id) });
+
     [Function("DeleteLibraryGame")]
     public Task<HttpResponseData> DeleteGame([HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "library/games/{id:int}")] HttpRequestData request, int id)
         => Execute(request, async () => new { deleted = await library.DeleteGameAsync(id) });
