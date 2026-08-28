@@ -69,6 +69,10 @@ public sealed class IgdbClient
 
         if (!response.IsSuccessStatusCode)
         {
+             Console.ForegroundColor = ConsoleColor.Red;
+        Console.WriteLine($"[ERROR DETALLE IGDB {(int)response.StatusCode}]: {json}");
+        Console.ResetColor();
+
             throw new HttpRequestException(
                 $"IGDB rechazÃ³ la consulta ({(int)response.StatusCode}): {json}");
         }
@@ -103,9 +107,9 @@ public sealed class IgdbClient
               expansions.id,expansions.name,expansions.first_release_date,expansions.platforms.name,expansions.url,
               standalone_expansions.id,standalone_expansions.name,standalone_expansions.first_release_date,standalone_expansions.platforms.name,standalone_expansions.url,
               bundles.id,bundles.name,bundles.first_release_date,bundles.platforms.name,bundles.url,
-              episodes.id,episodes.name,episodes.first_release_date,episodes.platforms.name,episodes.url,
-              seasons.id,seasons.name,seasons.first_release_date,seasons.platforms.name,seasons.url,
-              packs.id,packs.name,packs.first_release_date,packs.platforms.name,packs.url,
+              expanded_games.id,expanded_games.name,expanded_games.first_release_date,expanded_games.platforms.name,expanded_games.url,
+              remakes.id,remakes.name,remakes.first_release_date,remakes.platforms.name,remakes.url,
+              remasters.id,remasters.name,remasters.first_release_date,remasters.platforms.name,remasters.url,
               version_parent,version_title,screenshots.image_id,artworks.image_id,videos.video_id,videos.name,url;
             where id = {id};
             """;
