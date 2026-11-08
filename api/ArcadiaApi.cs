@@ -354,22 +354,35 @@ public sealed class ArcadiaApi(
 
     private static string? GetBearerToken(HttpRequestData request)
     {
-        if (!request.Headers.TryGetValues("Authorization", out var values))
+        if (request.Headers.TryGetValues("X-Arcadia-Session", out var sessionValues))
         {
-            return null;
+            var sessionToken = sessionValues.FirstOrDefault()?.Trim();
+            if (IsValidSessionToken(sessionToken))
+            {
+                return sessionToken;
+            }
         }
 
-        var value = values.FirstOrDefault();
-        if (value is null
-            || !value.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase)
-            || value.Length <= 7)
+        if (request.Headers.TryGetValues("Authorization", out var values))
         {
-            return null;
+            var value = values.FirstOrDefault();
+            if (value is not null
+                && value.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase)
+                && value.Length > 7)
+            {
+                var token = value[7..].Trim();
+                if (IsValidSessionToken(token))
+                {
+                    return token;
+                }
+            }
         }
 
-        var token = value[7..].Trim();
-        return token.Length is >= 40 and <= 100 ? token : null;
+        return null;
     }
+
+    private static bool IsValidSessionToken(string? token) =>
+        token is not null && token.Length is >= 40 and <= 100;
 
     private static bool IsValidEmail(string? email) =>
         !string.IsNullOrWhiteSpace(email)

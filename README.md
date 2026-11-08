@@ -56,6 +56,8 @@ Todas las rutas requieren HTTPS. Las rutas de cuenta son públicas; sincronizaci
 
 Las contraseñas se guardan con PBKDF2-SHA256 y salt aleatorio. Los tokens aleatorios de sesión se guardan como hashes y vencen en 30 días.
 
+Los clientes pueden enviar el token de sesión con `Authorization: Bearer <token>` o mediante `X-Arcadia-Session`. Flutter envía ambos para mantener la autenticación al pasar por el proxy de Static Web Apps.
+
 ### Sincronización
 
 - `GET /api/sync/snapshot` — devuelve `revision`, `snapshot` y `updatedAt`.
