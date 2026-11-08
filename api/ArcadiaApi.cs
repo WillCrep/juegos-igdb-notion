@@ -1,3 +1,4 @@
+using System.IO.Compression;
 using System.Net;
 using System.Text;
 using System.Text.Json;
@@ -11,7 +12,8 @@ public sealed class ArcadiaApi(
     ArcadiaExternalServices externalServices,
     ILogger<ArcadiaApi> logger)
 {
-    private const int MaximumSnapshotBytes = 2 * 1024 * 1024;
+    private const int MaximumSnapshotBytes = 16 * 1024 * 1024;
+    private const int MaximumCompressedSnapshotBytes = 8 * 1024 * 1024;
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
         PropertyNameCaseInsensitive = true,
@@ -199,7 +201,16 @@ public sealed class ArcadiaApi(
         }
 
         var account = authentication.Account!;
-        var body = await ReadJsonAsync<SaveSnapshotRequest>(request, cancellationToken, MaximumSnapshotBytes);
+        var parsedBody = await ReadSnapshotRequestAsync(request, cancellationToken);
+        if (parsedBody.TooLarge)
+        {
+            return await JsonAsync(request, HttpStatusCode.RequestEntityTooLarge, new
+            {
+                error = "La biblioteca supera el tamaño máximo de 16 MiB sin comprimir o 8 MiB comprimida."
+            });
+        }
+
+        var body = parsedBody.Body;
         if (body is null
             || body.BaseRevision < 0
             || body.Snapshot.ValueKind != JsonValueKind.Object
@@ -219,7 +230,7 @@ public sealed class ArcadiaApi(
         {
             return await JsonAsync(request, HttpStatusCode.RequestEntityTooLarge, new
             {
-                error = "La biblioteca supera el tamaño máximo de 2 MB."
+                error = "La biblioteca supera el tamaño máximo de 16 MiB sin comprimir."
             });
         }
 
@@ -415,6 +426,77 @@ public sealed class ArcadiaApi(
         catch (JsonException)
         {
             return default;
+        }
+    }
+
+    private static async Task<(SaveSnapshotRequest? Body, bool TooLarge)> ReadSnapshotRequestAsync(
+        HttpRequestData request,
+        CancellationToken cancellationToken)
+    {
+        var isGzip = false;
+        if (request.Headers.TryGetValues("Content-Encoding", out var encodings))
+        {
+            var encoding = encodings.FirstOrDefault();
+            if (!string.Equals(encoding, "gzip", StringComparison.OrdinalIgnoreCase))
+            {
+                return (null, false);
+            }
+
+            isGzip = true;
+        }
+
+        var maximumInputBytes = isGzip
+            ? MaximumCompressedSnapshotBytes
+            : MaximumSnapshotBytes;
+        using var input = new MemoryStream();
+        var buffer = new byte[8 * 1024];
+        int read;
+        while ((read = await request.Body.ReadAsync(buffer, cancellationToken)) > 0)
+        {
+            if (input.Length + read > maximumInputBytes)
+            {
+                return (null, true);
+            }
+
+            await input.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
+        }
+
+        byte[] jsonBytes;
+        if (isGzip)
+        {
+            using var compressed = new MemoryStream(input.ToArray());
+            using var gzip = new GZipStream(compressed, CompressionMode.Decompress);
+            using var decompressed = new MemoryStream();
+            while ((read = await gzip.ReadAsync(buffer, cancellationToken)) > 0)
+            {
+                if (decompressed.Length + read > MaximumSnapshotBytes)
+                {
+                    return (null, true);
+                }
+
+                await decompressed.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
+            }
+
+            jsonBytes = decompressed.ToArray();
+        }
+        else
+        {
+            jsonBytes = input.ToArray();
+        }
+
+        try
+        {
+            return (
+                JsonSerializer.Deserialize<SaveSnapshotRequest>(jsonBytes, JsonOptions),
+                false);
+        }
+        catch (JsonException)
+        {
+            return (null, false);
+        }
+        catch (InvalidDataException)
+        {
+            return (null, false);
         }
     }
 
