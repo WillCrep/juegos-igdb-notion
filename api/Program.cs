@@ -1,4 +1,3 @@
-using FinanceApp;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -8,20 +7,15 @@ var host = new HostBuilder()
 .ConfigureFunctionsWebApplication()
 .ConfigureServices(services =>
 {
-    services.Configure<JsonSerializerOptions>(options => options.PropertyNamingPolicy = JsonNamingPolicy.CamelCase);
-    services.AddHttpClient<IgdbClient>();
-    services.AddHttpClient<NotionClient>();
-    services.AddHttpClient<AiConsultantService>();
-    services.AddHttpClient<TrophiesHunterClient>();
-    services.AddSingleton<GameEnrichmentService>();
-    services.AddSingleton<LibraryService>();
-    services.AddSingleton<IgdbLibraryService>();
-    services.AddSingleton<AchievementImportService>();
-    services.AddSingleton<FinanceFunctions>();
-
-    // Agregar Application Insights
-        services.AddApplicationInsightsTelemetryWorkerService();
-        services.ConfigureFunctionsApplicationInsights();
+    services.Configure<JsonSerializerOptions>(options =>
+    {
+        options.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
+        options.PropertyNameCaseInsensitive = true;
+    });
+    services.AddSingleton<ArcadiaDatabase>();
+    services.AddHttpClient("igdb");
+    services.AddHttpClient("groq");
+    services.AddSingleton<ArcadiaExternalServices>();
 })
 .Build();
 

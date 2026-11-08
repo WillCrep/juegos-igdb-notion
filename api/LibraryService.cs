@@ -30,17 +30,18 @@ public sealed class LibraryService
         return new LibraryStats(reader.GetInt32(0), reader.GetInt32(1), reader.GetInt32(2), reader.GetInt32(3), reader.GetInt32(4));
     }
 
-    public async Task<IReadOnlyList<GameSummary>> GetGamesAsync(string? search, string? status, int page, int pageSize)
+public async Task<IReadOnlyList<GameSummary>> GetGamesAsync(string? search, string? status, int page, int pageSize)
     {
         page = Math.Max(1, page);
-        pageSize = Math.Clamp(pageSize, 1, 100);
+        pageSize = Math.Clamp(pageSize, 1, 5000);
         await using var connection = OpenConnection();
         await connection.OpenAsync();
         
         await using var command = new SqlCommand("""
             WITH PagedGames AS (
                 SELECT g.Id, g.Name, g.CoverUrl, g.Status, g.MyRating, g.ReleaseDate,
-                       g.PlayTimeHours, g.Genres, g.UpdatedAt
+                       g.PlayTimeHours, g.Genres, g.Summary, g.Notes, g.IgdbRating, g.IgdbId,
+                       g.IgdbUrl, g.Screenshots, g.Developers, g.Publishers, g.Franchises, g.UpdatedAt
                 FROM dbo.Games g
                 WHERE (@search IS NULL OR g.Name LIKE N'%' + @search + N'%')
                   AND (@status IS NULL OR g.Status = @status)
@@ -52,10 +53,11 @@ public sealed class LibraryService
                    COALESCE(cs.OwnedCopies, 0) AS OwnedCopies,
                    COALESCE(gs.AchievementTotal, 0) AS AchievementTotal,
                    COALESCE(gs.AchievementUnlocked, 0) AS AchievementUnlocked,
-                   pg.Genres
+                   pg.Genres, pg.Summary, pg.Notes, pg.IgdbRating, pg.IgdbId, pg.IgdbUrl,
+                   pg.Screenshots, pg.Developers, pg.Publishers, pg.Franchises, s.Id AS SeriesId
             FROM PagedGames pg
             OUTER APPLY (
-                SELECT TOP 1 s.Name
+                SELECT TOP 1 s.Id, s.Name
                 FROM dbo.GameSeries gser JOIN dbo.Series s ON s.Id = gser.SeriesId
                 WHERE gser.GameId = pg.Id
                 ORDER BY gser.SequenceNumber, s.Name
@@ -91,7 +93,17 @@ public sealed class LibraryService
                 reader.GetString(3), reader.IsDBNull(4) ? null : reader.GetByte(4), reader.IsDBNull(5) ? null : reader.GetDateTime(5),
                 reader.IsDBNull(6) ? null : reader.GetDecimal(6), reader.IsDBNull(7) ? null : reader.GetString(7),
                 reader.GetInt32(8), reader.GetInt32(9), reader.GetInt32(10),
-                reader.IsDBNull(11) ? null : reader.GetString(11)));
+                reader.IsDBNull(11) ? null : reader.GetString(11),
+                reader.IsDBNull(12) ? null : reader.GetString(12),
+                reader.IsDBNull(13) ? null : reader.GetString(13),
+                reader.IsDBNull(14) ? null : reader.GetDecimal(14),
+                reader.IsDBNull(15) ? null : reader.GetInt32(15),
+                reader.IsDBNull(16) ? null : reader.GetString(16),
+                reader.IsDBNull(17) ? null : reader.GetString(17),
+                reader.IsDBNull(18) ? null : reader.GetString(18),
+                reader.IsDBNull(19) ? null : reader.GetString(19),
+                reader.IsDBNull(20) ? null : reader.GetString(20),
+                reader.IsDBNull(21) ? null : reader.GetInt32(21)));
         }
         return result;
     }
@@ -522,7 +534,13 @@ public sealed class LibraryService
 }
 
 public sealed record LibraryStats(int Games, int Owned, int Series, int Achievements, int Unlocked);
-public sealed record GameSummary(int Id, string Name, string? CoverUrl, string Status, byte? MyRating, DateTime? ReleaseDate, decimal? PlayTimeHours, string? SeriesName, int OwnedCopies, int AchievementTotal, int AchievementUnlocked, string? Genres = null);
+public sealed record GameSummary(
+    int Id, string Name, string? CoverUrl, string Status, byte? MyRating, DateTime? ReleaseDate,
+    decimal? PlayTimeHours, string? SeriesName, int OwnedCopies, int AchievementTotal, int AchievementUnlocked,
+    string? Genres = null, string? Summary = null, string? Notes = null, decimal? IgdbRating = null,
+    int? IgdbId = null, string? IgdbUrl = null, string? Screenshots = null, string? Developers = null,
+    string? Publishers = null, string? Franchises = null, int? SeriesId = null
+);
 public sealed record GameDetails(int Id, string Name, int? IgdbId, string? Summary, string? CoverUrl, string? IgdbUrl, DateTime? ReleaseDate, decimal? IgdbRating, byte? MyRating, string Status, decimal? PlayTimeHours, string? Notes, int? SeriesId = null, string? SeriesName = null, string? Genres = null, string? Developers = null, string? Publishers = null, string? Franchises = null, string? Screenshots = null, string? Videos = null, IReadOnlyList<CollectionItem>? Collection = null, IReadOnlyList<DlcItem>? Dlcs = null);
 public sealed record CollectionItem(int Id, string Platform, string Store, string Edition, bool Owned, string? Format);
 public sealed record DlcItem(int Id, int? IgdbId, string Name, string? Type, string? IgdbUrl, DateTime? ReleaseDate, IReadOnlyList<DlcCopyItem> Copies);
