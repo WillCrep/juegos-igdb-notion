@@ -433,7 +433,6 @@ public sealed class ArcadiaApi(
         HttpRequestData request,
         CancellationToken cancellationToken)
     {
-        var isGzip = false;
         if (request.Headers.TryGetValues("Content-Encoding", out var encodings))
         {
             var encoding = encodings.FirstOrDefault();
@@ -442,18 +441,14 @@ public sealed class ArcadiaApi(
                 return (null, false);
             }
 
-            isGzip = true;
         }
 
-        var maximumInputBytes = isGzip
-            ? MaximumCompressedSnapshotBytes
-            : MaximumSnapshotBytes;
         using var input = new MemoryStream();
         var buffer = new byte[8 * 1024];
         int read;
         while ((read = await request.Body.ReadAsync(buffer, cancellationToken)) > 0)
         {
-            if (input.Length + read > maximumInputBytes)
+            if (input.Length + read > MaximumSnapshotBytes)
             {
                 return (null, true);
             }
@@ -461,10 +456,19 @@ public sealed class ArcadiaApi(
             await input.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
         }
 
+        var inputBytes = input.ToArray();
+        var isGzip = inputBytes.Length >= 2
+            && inputBytes[0] == 0x1f
+            && inputBytes[1] == 0x8b;
+        if (isGzip && inputBytes.Length > MaximumCompressedSnapshotBytes)
+        {
+            return (null, true);
+        }
+
         byte[] jsonBytes;
         if (isGzip)
         {
-            using var compressed = new MemoryStream(input.ToArray());
+            using var compressed = new MemoryStream(inputBytes);
             using var gzip = new GZipStream(compressed, CompressionMode.Decompress);
             using var decompressed = new MemoryStream();
             while ((read = await gzip.ReadAsync(buffer, cancellationToken)) > 0)
@@ -481,7 +485,7 @@ public sealed class ArcadiaApi(
         }
         else
         {
-            jsonBytes = input.ToArray();
+            jsonBytes = inputBytes;
         }
 
         try
