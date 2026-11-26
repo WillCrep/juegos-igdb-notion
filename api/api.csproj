@@ -22,6 +22,11 @@
     <Compile Include="ArcadiaApi.cs" />
     <Compile Include="ArcadiaDatabase.cs" />
     <Compile Include="ArcadiaExternalServices.cs" />
+    <Compile Include="AuthFunctions.cs" />
+    <Compile Include="AuthHelper.cs" />
+    <Compile Include="FinanceFunctions.cs" />
+    <Compile Include="AiScanHelper.cs" />
+    <Compile Include="DTOs\Modelos\Models.cs" />
   </ItemGroup>
 
 </Project>
