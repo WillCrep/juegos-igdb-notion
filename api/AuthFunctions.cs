@@ -18,10 +18,10 @@ public class AuthFunctions
     }
 
     // =========================================================================
-    // 1. REGISTRO DE USUARIO (POST /api/auth/register)
+    // 1. REGISTRO DE USUARIO BNK (POST /api/bnk/auth/register)
     // =========================================================================
-    [Function("Register")]
-    public async Task<HttpResponseData> Register([HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "auth/register")] HttpRequestData req)
+    [Function("BnkRegister")]
+    public async Task<HttpResponseData> Register([HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "bnk/auth/register")] HttpRequestData req)
     {
         var body = await new StreamReader(req.Body).ReadToEndAsync();
         var dto = JsonSerializer.Deserialize<RegisterDto>(body, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
@@ -146,10 +146,10 @@ public class AuthFunctions
     }
 
     // =========================================================================
-    // 2. INICIO DE SESIÓN (POST /api/auth/login) - CORREGIDO
+    // 2. INICIO DE SESIÓN BNK (POST /api/bnk/auth/login) - CORREGIDO
     // =========================================================================
-    [Function("Login")]
-    public async Task<HttpResponseData> Login([HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "auth/login")] HttpRequestData req)
+    [Function("BnkLogin")]
+    public async Task<HttpResponseData> Login([HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "bnk/auth/login")] HttpRequestData req)
     {
         var body = await new StreamReader(req.Body).ReadToEndAsync();
         var dto = JsonSerializer.Deserialize<LoginDto>(body, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });

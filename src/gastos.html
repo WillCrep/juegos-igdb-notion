@@ -732,7 +732,7 @@
     const btn = document.getElementById('btnLoginSubmit');
     btn.textContent = 'Verificando...';
 
-    const res = await fetch(`${API_BASE}/auth/login`, {
+    const res = await fetch(`${API_BASE}/bnk/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -757,7 +757,7 @@
     const btn = document.getElementById('btnRegSubmit');
     btn.textContent = 'Creando cuenta...';
 
-    const res = await fetch(`${API_BASE}/auth/register`, {
+    const res = await fetch(`${API_BASE}/bnk/auth/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
